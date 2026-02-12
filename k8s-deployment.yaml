@@ -1,6 +1,6 @@
-# SPDX-License-Identifier: Apache-2.0
-# Kubernetes deployment for Lipana TPS on the Tazama VPS
-# Deploy with: kubectl apply -f k8s-deployment.yaml
+# Lipana TPS — Kubernetes Deployment
+# Deploy: kubectl apply -f k8s-deployment.yaml
+# Or:     ./deploy.sh
 
 apiVersion: apps/v1
 kind: Deployment
@@ -25,51 +25,9 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8100
-          env:
-            - name: APP_HOST
-              value: "0.0.0.0"
-            - name: APP_PORT
-              value: "8100"
-            - name: LOG_LEVEL
-              value: "info"
-            - name: API_KEYS
-              value: "CHANGE_ME_GENERATE_A_REAL_KEY"
-            - name: TMS_BASE_URL
-              value: "http://gateway.tazama.svc.cluster.local:3000"
-            - name: TMS_TIMEOUT
-              value: "30"
-            - name: EVAL_DB_HOST
-              value: "postgres.tazama.svc.cluster.local"
-            - name: EVAL_DB_PORT
-              value: "5432"
-            - name: EVAL_DB_NAME
-              value: "evaluation"
-            - name: EVAL_DB_USER
-              value: "postgres"
-            - name: EVAL_DB_PASSWORD
-              value: "postgres"
-            - name: CONFIG_DB_HOST
-              value: "postgres.tazama.svc.cluster.local"
-            - name: CONFIG_DB_PORT
-              value: "5432"
-            - name: CONFIG_DB_NAME
-              value: "configuration"
-            - name: CONFIG_DB_USER
-              value: "postgres"
-            - name: CONFIG_DB_PASSWORD
-              value: "postgres"
-            - name: EVENT_DB_HOST
-              value: "postgres.tazama.svc.cluster.local"
-            - name: EVENT_DB_PORT
-              value: "5432"
-            - name: EVENT_DB_NAME
-              value: "event_history"
-            - name: EVENT_DB_USER
-              value: "postgres"
-            - name: EVENT_DB_PASSWORD
-              value: "postgres"
-            - name: DEFAULT_TENANT_ID
-              value: "DEFAULT"
+          envFrom:
+            - configMapRef:
+                name: lipana-tps-config
           livenessProbe:
             httpGet:
               path: /health
@@ -92,6 +50,36 @@ spec:
 
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lipana-tps-config
+  namespace: tazama
+data:
+  APP_HOST: "0.0.0.0"
+  APP_PORT: "8100"
+  LOG_LEVEL: "info"
+  API_KEYS: "CHANGE_ME"                                     # ./deploy.sh key
+  TMS_BASE_URL: "http://gateway.tazama.svc.cluster.local:3000"
+  TMS_TIMEOUT: "30"
+  EVAL_DB_HOST: "postgres.tazama.svc.cluster.local"
+  EVAL_DB_PORT: "5432"
+  EVAL_DB_NAME: "evaluation"
+  EVAL_DB_USER: "postgres"
+  EVAL_DB_PASSWORD: "postgres"
+  CONFIG_DB_HOST: "postgres.tazama.svc.cluster.local"
+  CONFIG_DB_PORT: "5432"
+  CONFIG_DB_NAME: "configuration"
+  CONFIG_DB_USER: "postgres"
+  CONFIG_DB_PASSWORD: "postgres"
+  EVENT_DB_HOST: "postgres.tazama.svc.cluster.local"
+  EVENT_DB_PORT: "5432"
+  EVENT_DB_NAME: "event_history"
+  EVENT_DB_USER: "postgres"
+  EVENT_DB_PASSWORD: "postgres"
+  DEFAULT_TENANT_ID: "DEFAULT"
+
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: lipana-tps
@@ -105,34 +93,3 @@ spec:
       targetPort: 8100
       nodePort: 30810
       protocol: TCP
-
----
-# Ingress for tazama.lipana.co
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: lipana-tps
-  namespace: tazama
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - tazama.lipana.co
-      secretName: lipana-tps-tls
-  rules:
-    - host: tazama.lipana.co
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: lipana-tps
-                port:
-                  number: 8100

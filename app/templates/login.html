@@ -1,169 +1,131 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sign In — Lipana TPS</title>
-    <meta name="description" content="Lipana TPS — Secure transaction processing service for the Tazama fraud-monitoring pipeline" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/css/style.css" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%236366f1'/%3E%3Cpath d='M30 65V35l20 15-20 15zm20-15l20 15V35l-20 15z' fill='white'/%3E%3C/svg%3E" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lipana TPS — Login</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <style>
+    body { background: var(--bg-primary); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .login-wrapper { width: 100%; max-width: 420px; padding: 20px; }
+    .login-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 40px 32px; box-shadow: 0 0 40px rgba(0,246,255,.04); }
+    .login-logo { text-align: center; margin-bottom: 32px; }
+    .login-logo h1 { font-size: 28px; font-weight: 700; letter-spacing: 2px; background: linear-gradient(135deg, var(--accent), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0 0 6px; }
+    .login-logo p { color: var(--text-muted); font-size: 13px; margin: 0; letter-spacing: 1px; text-transform: uppercase; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }
+    .form-group input { width: 100%; padding: 12px 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; transition: border-color .2s, box-shadow .2s; box-sizing: border-box; }
+    .form-group input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,246,255,.1); }
+    .form-group input::placeholder { color: var(--text-muted); }
+    .remember-row { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; }
+    .remember-row input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+    .remember-row label { font-size: 13px; color: var(--text-secondary); cursor: pointer; user-select: none; }
+    .login-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, var(--primary), var(--secondary)); color: #fff; font-size: 15px; font-weight: 700; border: none; border-radius: 10px; cursor: pointer; transition: opacity .2s, transform .15s; letter-spacing: .5px; }
+    .login-btn:hover { opacity: .92; transform: translateY(-1px); }
+    .login-btn:active { transform: translateY(0); }
+    .login-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .login-error { color: var(--danger); font-size: 13px; text-align: center; margin-top: 16px; min-height: 20px; }
+    .login-footer { text-align: center; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+    .login-footer span { font-size: 12px; color: var(--text-muted); }
+    .particles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
+    .particles span { position: absolute; width: 2px; height: 2px; background: var(--accent); border-radius: 50%; opacity: .3; animation: particleFloat linear infinite; }
+    @keyframes particleFloat {
+      0% { transform: translateY(100vh) scale(0); opacity: 0; }
+      20% { opacity: .4; }
+      100% { transform: translateY(-20vh) scale(1); opacity: 0; }
+    }
+  </style>
 </head>
 <body>
-
-<div class="login-wrapper">
-    <div class="login-container">
-
-        <!-- Brand -->
-        <div class="login-brand">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                </svg>
-            </div>
-            <h1><span>Lipana</span> TPS</h1>
-            <p>Transaction Processing Service for Tazama Pipeline</p>
+  <div class="particles" id="particles"></div>
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="login-logo">
+        <h1>LIPANA TPS</h1>
+        <p>Transaction Processing System</p>
+      </div>
+      <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="apiKeyInput">API Key</label>
+          <input type="password" id="apiKeyInput" placeholder="Enter your API key" required autocomplete="current-password" />
         </div>
-
-        <!-- Login card -->
-        <div class="login-card">
-            <h2>Welcome back</h2>
-            <p class="subtitle">Enter your API credentials to access the dashboard</p>
-
-            <!-- Error alert -->
-            <div class="login-error" id="loginError">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0">
-                    <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-                </svg>
-                <span id="loginErrorText">Invalid API key</span>
-            </div>
-
-            <form id="loginForm" onsubmit="handleLogin(event)">
-                <!-- API Key -->
-                <div class="form-group">
-                    <label for="loginApiKey">API Key</label>
-                    <div class="form-input-icon">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-                        </svg>
-                        <input type="password" class="form-input" id="loginApiKey" placeholder="Enter your X-API-Key" required autocomplete="current-password" />
-                        <button type="button" class="toggle-vis" onclick="toggleKeyVisibility()" title="Toggle visibility">
-                            <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Tenant ID -->
-                <div class="form-group">
-                    <label for="loginTenant">Tenant ID</label>
-                    <div class="form-input-icon">
-                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        <input type="text" class="form-input" id="loginTenant" value="DEFAULT" placeholder="Tenant identifier" />
-                    </div>
-                </div>
-
-                <!-- Remember -->
-                <div class="form-check">
-                    <input type="checkbox" id="loginRemember" checked />
-                    <label for="loginRemember">Remember my credentials</label>
-                </div>
-
-                <!-- Submit -->
-                <button type="submit" class="btn btn-primary btn-block" id="loginBtn">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
-                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
-                    </svg>
-                    Sign In to Dashboard
-                </button>
-            </form>
+        <div class="form-group">
+          <label for="tenantInput">Tenant ID</label>
+          <input type="text" id="tenantInput" placeholder="e.g. default (optional)" autocomplete="organization" />
         </div>
-
-        <!-- Footer -->
-        <div class="login-footer">
-            <p>Lipana TPS v1.0 — <a href="/docs" target="_blank">API Documentation</a> · <a href="/redoc" target="_blank">ReDoc</a></p>
-            <p style="margin-top:6px; opacity:.6;">Accessible at <strong>tazama.lipana.co</strong></p>
+        <div class="form-group">
+          <label for="baseUrlInput">Server URL</label>
+          <input type="url" id="baseUrlInput" placeholder="Auto-detected" />
         </div>
-
+        <div class="remember-row">
+          <input type="checkbox" id="rememberCheck" checked />
+          <label for="rememberCheck">Remember this session</label>
+        </div>
+        <button type="submit" class="login-btn" id="loginBtn">Connect</button>
+        <div class="login-error" id="loginError"></div>
+      </form>
+      <div class="login-footer">
+        <span>Tazama · Real-Time Fraud Detection</span>
+      </div>
     </div>
-</div>
+  </div>
+  <script>
+    // Particles
+    (function() {
+      const c = document.getElementById('particles');
+      for (let i = 0; i < 30; i++) {
+        const s = document.createElement('span');
+        s.style.left = Math.random() * 100 + '%';
+        s.style.animationDuration = (6 + Math.random() * 8) + 's';
+        s.style.animationDelay = Math.random() * 6 + 's';
+        s.style.width = s.style.height = (1 + Math.random() * 2) + 'px';
+        c.appendChild(s);
+      }
+    })();
 
-<script>
-    // Check for stored credentials
-    document.addEventListener('DOMContentLoaded', () => {
-        const saved = JSON.parse(localStorage.getItem('lipana_session') || '{}');
-        if (saved.apiKey) document.getElementById('loginApiKey').value = saved.apiKey;
-        if (saved.tenantId) document.getElementById('loginTenant').value = saved.tenantId;
-    });
-
-    function toggleKeyVisibility() {
-        const input = document.getElementById('loginApiKey');
-        input.type = input.type === 'password' ? 'text' : 'password';
-    }
+    // Pre-fill from saved session
+    const saved = JSON.parse(localStorage.getItem('lipana_session') || '{}');
+    if (saved.apiKey) document.getElementById('apiKeyInput').value = saved.apiKey;
+    if (saved.tenantId) document.getElementById('tenantInput').value = saved.tenantId;
+    document.getElementById('baseUrlInput').value = saved.baseUrl || window.location.origin;
 
     async function handleLogin(e) {
-        e.preventDefault();
-        const btn = document.getElementById('loginBtn');
-        const errorEl = document.getElementById('loginError');
-        const errorText = document.getElementById('loginErrorText');
+      e.preventDefault();
+      const btn = document.getElementById('loginBtn');
+      const errEl = document.getElementById('loginError');
+      errEl.textContent = '';
 
-        const apiKey = document.getElementById('loginApiKey').value.trim();
-        const tenant = document.getElementById('loginTenant').value.trim() || 'DEFAULT';
+      const apiKey = document.getElementById('apiKeyInput').value.trim();
+      const tenantId = document.getElementById('tenantInput').value.trim() || 'default';
+      const baseUrl = document.getElementById('baseUrlInput').value.trim() || window.location.origin;
 
-        if (!apiKey) {
-            errorText.textContent = 'Please enter your API key';
-            errorEl.classList.add('show');
-            return;
+      if (!apiKey) { errEl.textContent = 'API key is required'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Connecting...';
+
+      try {
+        const res = await fetch(baseUrl + '/api/v1/results/stats/summary?tenant_id=' + encodeURIComponent(tenantId), {
+          headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || 'Authentication failed');
         }
 
-        // Loading state
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px"></span> Authenticating...';
-        errorEl.classList.remove('show');
-
-        try {
-            const resp = await fetch(`${window.location.origin}/api/v1/results/stats/summary?tenant_id=${tenant}`, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': apiKey,
-                },
-            });
-
-            if (!resp.ok) {
-                const data = await resp.json().catch(() => ({}));
-                throw new Error(data.detail || `Authentication failed (${resp.status})`);
-            }
-
-            // Store credentials
-            if (document.getElementById('loginRemember').checked) {
-                localStorage.setItem('lipana_session', JSON.stringify({
-                    apiKey: apiKey,
-                    tenantId: tenant,
-                    baseUrl: window.location.origin,
-                }));
-            }
-
-            // Redirect to dashboard
-            window.location.href = '/dashboard';
-
-        } catch (err) {
-            errorText.textContent = err.message;
-            errorEl.classList.add('show');
-            btn.disabled = false;
-            btn.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
-                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
-                </svg>
-                Sign In to Dashboard
-            `;
+        if (document.getElementById('rememberCheck').checked) {
+          localStorage.setItem('lipana_session', JSON.stringify({ apiKey, tenantId, baseUrl }));
         }
+        window.location.href = '/dashboard';
+      } catch (err) {
+        errEl.textContent = err.message.includes('Failed to fetch')
+          ? 'Server unreachable — check URL'
+          : err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect';
+      }
     }
-</script>
-
+  </script>
 </body>
 </html>
