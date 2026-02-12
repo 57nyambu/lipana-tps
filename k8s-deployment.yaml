@@ -22,8 +22,8 @@ spec:
       serviceAccountName: lipana-tps
       containers:
         - name: lipana-tps
-          image: lipana-tps:latest
-          imagePullPolicy: IfNotPresent
+          image: tomnyambu/lipana-tps:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8100
           envFrom:
