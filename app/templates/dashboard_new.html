@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lipana TPS — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <!-- Sidebar Overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="App.closeSidebar()"></div>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div class="logo-text">Lipana<span>Transaction Processing</span></div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <!-- MAIN -->
+      <div class="nav-section">
+        <div class="nav-section-title">Main</div>
+        <a class="nav-item active" onclick="App.navigateTo('overview')" data-page="overview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a class="nav-item" onclick="App.navigateTo('results')" data-page="results">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Results
+        </a>
+      </div>
+
+      <!-- OPERATIONS -->
+      <div class="nav-section">
+        <div class="nav-section-title">Operations</div>
+        <a class="nav-item" onclick="App.navigateTo('transactions')" data-page="transactions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+          Submit Transaction
+        </a>
+        <a class="nav-item" onclick="App.navigateTo('lookup')" data-page="lookup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Lookup
+        </a>
+      </div>
+
+      <!-- CLUSTER -->
+      <div class="nav-section">
+        <div class="nav-section-title">Cluster</div>
+        <a class="nav-item" onclick="App.navigateTo('pods')" data-page="pods">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 6V2"/><path d="M6 18v2"/><path d="M18 18v2"/><path d="M2 12h20"/></svg>
+          Pods & Services
+        </a>
+        <a class="nav-item" onclick="App.navigateTo('logs')" data-page="logs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          Logs
+        </a>
+        <a class="nav-item" onclick="App.navigateTo('deployments')" data-page="deployments">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          Deployments
+        </a>
+        <a class="nav-item" onclick="App.navigateTo('events')" data-page="events">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Events
+        </a>
+      </div>
+
+      <!-- SYSTEM -->
+      <div class="nav-section">
+        <div class="nav-section-title">System</div>
+        <a class="nav-item" onclick="App.navigateTo('settings')" data-page="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
+        </a>
+        <a class="nav-item" href="/docs" target="_blank">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+          API Docs
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="avatar" id="userAvatar">OP</div>
+        <div class="user-info">
+          <div class="user-name" id="userName">Operator</div>
+          <div class="user-role" id="userRole">Authenticated</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN ═══ -->
+  <main class="main-content">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" onclick="App.toggleSidebar()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <h2 id="pageTitle">Dashboard</h2>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-status" id="connStatus">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Disconnected</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="App.logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Logout
+        </button>
+      </div>
+    </header>
+
+    <div class="content-area">
+
+      <!-- ═══════════ PAGE: OVERVIEW ═══════════ -->
+      <section class="page-section active" id="page-overview">
+        <div class="stats-grid">
+          <div class="stat-card primary">
+            <div class="stat-header"><span class="stat-label">Total Evaluations</span><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg></div></div>
+            <div class="stat-value" id="statEvals">—</div>
+            <div class="stat-change">All-time evaluations</div>
+          </div>
+          <div class="stat-card success">
+            <div class="stat-header"><span class="stat-label">Transactions</span><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div></div>
+            <div class="stat-value" id="statTxns">—</div>
+            <div class="stat-change">Processed transactions</div>
+          </div>
+          <div class="stat-card danger">
+            <div class="stat-header"><span class="stat-label">Alerts</span><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div></div>
+            <div class="stat-value" id="statAlerts">—</div>
+            <div class="stat-change">Flagged evaluations</div>
+          </div>
+          <div class="stat-card info">
+            <div class="stat-header"><span class="stat-label">Cluster Pods</span><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 12h20"/></svg></div></div>
+            <div class="stat-value" id="statPods">—</div>
+            <div class="stat-change">Running pods</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-header"><h3>Evaluation Breakdown</h3></div>
+            <div class="panel-body"><div class="chart-container"><canvas id="evalChart"></canvas></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><h3>Recent Activity</h3></div>
+            <div class="panel-body" id="activityFeed">
+              <div class="empty-state"><p>Connect to see activity...</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: RESULTS ═══════════ -->
+      <section class="page-section" id="page-results">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Evaluation Results</h3>
+            <button class="btn btn-sm btn-ghost" onclick="App.loadResults()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Refresh</button>
+          </div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table class="data-table" id="resultsTable">
+                <thead><tr><th>Message ID</th><th>Status</th><th>Result</th><th>Typologies</th><th>Timestamp</th><th>Actions</th></tr></thead>
+                <tbody id="resultsBody"><tr><td colspan="6"><div class="empty-state"><p>No data loaded</p></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel-footer">
+            <div class="pagination">
+              <span id="resultsInfo">—</span>
+              <div class="pagination-btns">
+                <button class="btn btn-xs btn-ghost" id="prevPage" onclick="App.prevPage()">Previous</button>
+                <button class="btn btn-xs btn-ghost" id="nextPage" onclick="App.nextPage()">Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: TRANSACTIONS ═══════════ -->
+      <section class="page-section" id="page-transactions">
+        <div class="panel">
+          <div class="panel-header"><h3>Submit Transaction</h3></div>
+          <div class="panel-body">
+            <form onsubmit="App.submitTransaction(event)">
+              <div class="form-grid">
+                <div class="form-group"><label>Debtor Name</label><input class="form-input" id="txDebtor" placeholder="John Doe" required /></div>
+                <div class="form-group"><label>Creditor Name</label><input class="form-input" id="txCreditor" placeholder="Jane Smith" required /></div>
+                <div class="form-group"><label>Debtor Account</label><input class="form-input" id="txDebtorAcct" placeholder="ACC-001" required /></div>
+                <div class="form-group"><label>Creditor Account</label><input class="form-input" id="txCreditorAcct" placeholder="ACC-002" required /></div>
+                <div class="form-group"><label>Amount</label><input class="form-input" id="txAmount" type="number" step="0.01" placeholder="100.00" required /></div>
+                <div class="form-group">
+                  <label>Currency</label>
+                  <select id="txCurrency"><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="KES">KES</option><option value="ZAR">ZAR</option><option value="UGX">UGX</option><option value="TZS">TZS</option></select>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send Transaction</button>
+                  <button type="reset" class="btn btn-ghost">Reset</button>
+                </div>
+              </div>
+            </form>
+            <div class="form-result" id="txResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: LOOKUP ═══════════ -->
+      <section class="page-section" id="page-lookup">
+        <div class="panel">
+          <div class="panel-header"><h3>Lookup by Message ID</h3></div>
+          <div class="panel-body">
+            <div style="display:flex;gap:12px;margin-bottom:16px">
+              <input class="form-input" id="lookupId" placeholder="Enter Message ID (e.g. LIPANA-abc123)" style="flex:1"/>
+              <button class="btn btn-primary" onclick="App.lookupById()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Search</button>
+            </div>
+            <div class="form-result" id="lookupResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: PODS ═══════════ -->
+      <section class="page-section" id="page-pods">
+        <div class="cluster-stats" id="clusterStats">
+          <div class="cluster-stat"><div class="cs-value" id="csTotalPods">—</div><div class="cs-label">Total Pods</div></div>
+          <div class="cluster-stat stat-running"><div class="cs-value" id="csRunning">—</div><div class="cs-label">Running</div></div>
+          <div class="cluster-stat stat-pending"><div class="cs-value" id="csPending">—</div><div class="cs-label">Pending</div></div>
+          <div class="cluster-stat stat-failed"><div class="cs-value" id="csFailed">—</div><div class="cs-label">Failed</div></div>
+          <div class="cluster-stat"><div class="cs-value" id="csRestarts">—</div><div class="cs-label">Total Restarts</div></div>
+          <div class="cluster-stat"><div class="cs-value" id="csServices">—</div><div class="cs-label">Services</div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Pods</h3>
+            <div class="flex gap-2">
+              <button class="btn btn-sm btn-ghost" onclick="App.loadPods()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Refresh</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="pods-grid" id="podsGrid">
+              <div class="empty-state"><p>Loading pods...</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: LOGS ═══════════ -->
+      <section class="page-section" id="page-logs">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Container Logs</h3>
+            <div class="log-controls">
+              <select id="logPodSelect" onchange="App.loadLogs()">
+                <option value="">Select a pod...</option>
+              </select>
+              <select id="logTailLines">
+                <option value="100">100 lines</option>
+                <option value="200" selected>200 lines</option>
+                <option value="500">500 lines</option>
+                <option value="1000">1000 lines</option>
+              </select>
+              <button class="btn btn-sm btn-primary" onclick="App.loadLogs()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Fetch</button>
+              <label class="flex items-center gap-2" style="font-size:13px;color:var(--text-secondary)"><input type="checkbox" id="logAutoScroll" checked style="accent-color:var(--primary)"> Auto-scroll</label>
+            </div>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <div class="log-terminal">
+              <div class="log-terminal-header">
+                <div class="terminal-dots"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span></div>
+                <span id="logTerminalTitle">No pod selected</span>
+                <div class="log-status" id="logStatus"></div>
+              </div>
+              <div class="log-terminal-body" id="logTerminalBody">
+                <div class="log-empty">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3;margin-bottom:12px"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  <p>Select a pod to view its logs</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: DEPLOYMENTS ═══════════ -->
+      <section class="page-section" id="page-deployments">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Deployments</h3>
+            <button class="btn btn-sm btn-ghost" onclick="App.loadDeployments()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Refresh</button>
+          </div>
+          <div class="panel-body" id="deploymentsBody">
+            <div class="empty-state"><p>Loading deployments...</p></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h3>Services</h3></div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Name</th><th>Type</th><th>Cluster IP</th><th>Ports</th></tr></thead>
+                <tbody id="servicesBody"><tr><td colspan="4"><div class="empty-state"><p>Loading...</p></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: EVENTS ═══════════ -->
+      <section class="page-section" id="page-events">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Cluster Events</h3>
+            <button class="btn btn-sm btn-ghost" onclick="App.loadEvents()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Refresh</button>
+          </div>
+          <div class="panel-body" id="eventsBody">
+            <div class="empty-state"><p>Loading events...</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: SETTINGS ═══════════ -->
+      <section class="page-section" id="page-settings">
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="config-card-header">
+              <div class="config-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+              <div><div class="config-card-title">API Connection</div><div class="config-card-desc">Server and authentication</div></div>
+            </div>
+            <div class="config-fields">
+              <div class="config-field"><span class="config-field-label">API Base URL</span><span class="config-field-value" id="cfgBaseUrl">—</span></div>
+              <div class="config-field"><span class="config-field-label">Tenant ID</span><span class="config-field-value" id="cfgTenant">—</span></div>
+              <div class="config-field"><span class="config-field-label">Connection</span><span class="config-field-value" id="cfgConnStatus">Disconnected</span></div>
+            </div>
+          </div>
+
+          <div class="config-card">
+            <div class="config-card-header">
+              <div class="config-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 12h20"/></svg></div>
+              <div><div class="config-card-title">Kubernetes Cluster</div><div class="config-card-desc">Pod and deployment management</div></div>
+            </div>
+            <div class="config-fields">
+              <div class="config-field"><span class="config-field-label">Namespace</span><span class="config-field-value">tazama</span></div>
+              <div class="config-field"><span class="config-field-label">Total Pods</span><span class="config-field-value" id="cfgPodCount">—</span></div>
+              <div class="config-field"><span class="config-field-label">Deployments</span><span class="config-field-value" id="cfgDeployCount">—</span></div>
+            </div>
+          </div>
+
+          <div class="config-card">
+            <div class="config-card-header">
+              <div class="config-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+              <div><div class="config-card-title">Databases</div><div class="config-card-desc">PostgreSQL connections</div></div>
+            </div>
+            <div class="config-fields" id="cfgDbStatus">
+              <div class="config-field"><span class="config-field-label">Loading...</span><span class="config-field-value">—</span></div>
+            </div>
+          </div>
+
+          <div class="config-card">
+            <div class="config-card-header">
+              <div class="config-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+              <div><div class="config-card-title">Application</div><div class="config-card-desc">Runtime information</div></div>
+            </div>
+            <div class="config-fields">
+              <div class="config-field"><span class="config-field-label">Version</span><span class="config-field-value">1.0.0</span></div>
+              <div class="config-field"><span class="config-field-label">Framework</span><span class="config-field-value">FastAPI</span></div>
+              <div class="config-field"><span class="config-field-label">Domain</span><span class="config-field-value">tazama.lipana.co</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /content-area -->
+  </main>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <div class="modal-header"><h2 id="modalTitle">Details</h2><button class="modal-close" onclick="App.closeModal()">&times;</button></div>
+    <div class="modal-body"><pre id="modalBody"></pre></div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="confirm-dialog">
+    <h3 id="confirmTitle">Confirm Action</h3>
+    <p id="confirmMessage">Are you sure?</p>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" onclick="App.closeConfirm()">Cancel</button>
+      <button class="btn btn-danger" id="confirmBtn" onclick="App.execConfirm()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

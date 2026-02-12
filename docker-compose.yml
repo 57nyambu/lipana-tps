@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# docker-compose for LOCAL development / testing
+# For production on the VPS, use the Kubernetes deployment below.
+
+services:
+  lipana-tps:
+    build: .
+    container_name: lipana-tps
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

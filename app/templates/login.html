@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign In — Lipana TPS</title>
+    <meta name="description" content="Lipana TPS — Secure transaction processing service for the Tazama fraud-monitoring pipeline" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%236366f1'/%3E%3Cpath d='M30 65V35l20 15-20 15zm20-15l20 15V35l-20 15z' fill='white'/%3E%3C/svg%3E" />
+</head>
+<body>
+
+<div class="login-wrapper">
+    <div class="login-container">
+
+        <!-- Brand -->
+        <div class="login-brand">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+            </div>
+            <h1><span>Lipana</span> TPS</h1>
+            <p>Transaction Processing Service for Tazama Pipeline</p>
+        </div>
+
+        <!-- Login card -->
+        <div class="login-card">
+            <h2>Welcome back</h2>
+            <p class="subtitle">Enter your API credentials to access the dashboard</p>
+
+            <!-- Error alert -->
+            <div class="login-error" id="loginError">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0">
+                    <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                <span id="loginErrorText">Invalid API key</span>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <!-- API Key -->
+                <div class="form-group">
+                    <label for="loginApiKey">API Key</label>
+                    <div class="form-input-icon">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                        </svg>
+                        <input type="password" class="form-input" id="loginApiKey" placeholder="Enter your X-API-Key" required autocomplete="current-password" />
+                        <button type="button" class="toggle-vis" onclick="toggleKeyVisibility()" title="Toggle visibility">
+                            <svg id="eyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tenant ID -->
+                <div class="form-group">
+                    <label for="loginTenant">Tenant ID</label>
+                    <div class="form-input-icon">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <input type="text" class="form-input" id="loginTenant" value="DEFAULT" placeholder="Tenant identifier" />
+                    </div>
+                </div>
+
+                <!-- Remember -->
+                <div class="form-check">
+                    <input type="checkbox" id="loginRemember" checked />
+                    <label for="loginRemember">Remember my credentials</label>
+                </div>
+
+                <!-- Submit -->
+                <button type="submit" class="btn btn-primary btn-block" id="loginBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
+                    </svg>
+                    Sign In to Dashboard
+                </button>
+            </form>
+        </div>
+
+        <!-- Footer -->
+        <div class="login-footer">
+            <p>Lipana TPS v1.0 — <a href="/docs" target="_blank">API Documentation</a> · <a href="/redoc" target="_blank">ReDoc</a></p>
+            <p style="margin-top:6px; opacity:.6;">Accessible at <strong>tazama.lipana.co</strong></p>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    // Check for stored credentials
+    document.addEventListener('DOMContentLoaded', () => {
+        const saved = JSON.parse(localStorage.getItem('lipana_session') || '{}');
+        if (saved.apiKey) document.getElementById('loginApiKey').value = saved.apiKey;
+        if (saved.tenantId) document.getElementById('loginTenant').value = saved.tenantId;
+    });
+
+    function toggleKeyVisibility() {
+        const input = document.getElementById('loginApiKey');
+        input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    async function handleLogin(e) {
+        e.preventDefault();
+        const btn = document.getElementById('loginBtn');
+        const errorEl = document.getElementById('loginError');
+        const errorText = document.getElementById('loginErrorText');
+
+        const apiKey = document.getElementById('loginApiKey').value.trim();
+        const tenant = document.getElementById('loginTenant').value.trim() || 'DEFAULT';
+
+        if (!apiKey) {
+            errorText.textContent = 'Please enter your API key';
+            errorEl.classList.add('show');
+            return;
+        }
+
+        // Loading state
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px"></span> Authenticating...';
+        errorEl.classList.remove('show');
+
+        try {
+            const resp = await fetch(`${window.location.origin}/api/v1/results/stats/summary?tenant_id=${tenant}`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': apiKey,
+                },
+            });
+
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.detail || `Authentication failed (${resp.status})`);
+            }
+
+            // Store credentials
+            if (document.getElementById('loginRemember').checked) {
+                localStorage.setItem('lipana_session', JSON.stringify({
+                    apiKey: apiKey,
+                    tenantId: tenant,
+                    baseUrl: window.location.origin,
+                }));
+            }
+
+            // Redirect to dashboard
+            window.location.href = '/dashboard';
+
+        } catch (err) {
+            errorText.textContent = err.message;
+            errorEl.classList.add('show');
+            btn.disabled = false;
+            btn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
+                </svg>
+                Sign In to Dashboard
+            `;
+        }
+    }
+</script>
+
+</body>
+</html>
