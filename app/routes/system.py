@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_api_key
+from app.auth import require_api_key, require_session_with_api_key, require_admin
 from app.config import settings
 
 logger = logging.getLogger("lipana.system")
@@ -56,7 +56,7 @@ def _get_k8s_clients():
     description="List all pods in the Tazama Kubernetes namespace with status and resource details.",
 )
 async def list_pods(
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> dict[str, Any]:
     core_v1, _ = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -133,7 +133,7 @@ async def get_pod_logs(
     container: str | None = Query(default=None, description="Container name (for multi-container pods)"),
     tail_lines: int = Query(default=200, ge=1, le=5000, description="Number of tail lines"),
     previous: bool = Query(default=False, description="Get logs from previous container instance"),
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> dict[str, Any]:
     core_v1, _ = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -169,7 +169,7 @@ async def get_pod_logs(
 )
 async def restart_pod(
     pod_name: str,
-    _key: str = Depends(require_api_key),
+    _admin: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     core_v1, _ = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -195,7 +195,7 @@ async def restart_pod(
     description="List all deployments in the Tazama namespace with replica and image info.",
 )
 async def list_deployments(
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> dict[str, Any]:
     _, apps_v1 = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -233,7 +233,7 @@ async def list_deployments(
 async def scale_deployment(
     deploy_name: str,
     replicas: int = Query(ge=0, le=10, description="Target replica count"),
-    _key: str = Depends(require_api_key),
+    _admin: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     _, apps_v1 = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -267,7 +267,7 @@ async def scale_deployment(
 )
 async def restart_deployment(
     deploy_name: str,
-    _key: str = Depends(require_api_key),
+    _admin: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     _, apps_v1 = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -311,7 +311,7 @@ async def update_deployment_image(
     deploy_name: str,
     image: str = Query(description="New container image (e.g. myregistry/app:v2)"),
     container_name: str = Query(default=None, description="Container name to update (defaults to first)"),
-    _key: str = Depends(require_api_key),
+    _admin: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     _, apps_v1 = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -354,7 +354,7 @@ async def update_deployment_image(
     description="List all Kubernetes services in the Tazama namespace.",
 )
 async def list_services(
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> dict[str, Any]:
     core_v1, _ = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -401,7 +401,7 @@ async def list_services(
 )
 async def list_events(
     limit: int = Query(default=50, ge=1, le=200),
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> dict[str, Any]:
     core_v1, _ = _get_k8s_clients()
     ns = settings.k8s_namespace
@@ -449,7 +449,7 @@ async def list_events(
     description="High-level summary of the Tazama cluster: pod counts, deployment health, etc.",
 )
 async def cluster_overview(
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> dict[str, Any]:
     core_v1, apps_v1 = _get_k8s_clients()
     ns = settings.k8s_namespace

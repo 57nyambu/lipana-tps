@@ -17,6 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.models import HealthResponse
 from app.routes import dashboard, entry, exit as exit_routes, system
+from app.routes import users as users_routes
+from app.users import ensure_admin_exists
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -36,7 +38,7 @@ def create_app() -> FastAPI:
             "endpoints and a professional dashboard UI.\n\n"
             "**Production:** https://tazama.lipana.co"
         ),
-        version="1.0.0",
+        version="2.0.0",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -90,11 +92,15 @@ def create_app() -> FastAPI:
 
     # Mount routers
     app.include_router(dashboard.router)
+    app.include_router(users_routes.router)
     app.include_router(entry.router)
     app.include_router(exit_routes.router)
     app.include_router(system.router)
 
-    logger.info("Lipana TPS ready — https://tazama.lipana.co — docs at /docs")
+    # Ensure default admin user exists
+    ensure_admin_exists()
+
+    logger.info("Lipana TPS v2.0 ready — https://tazama.lipana.co — docs at /docs")
     return app
 
 

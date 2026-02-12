@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
-Dashboard routes — serves the login page and the main dashboard SPA.
-No API key required for the pages themselves; the JS in the pages
-sends the key with each API call.
+Dashboard routes — serves the login page, main dashboard SPA,
+and the transaction test page.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ _DASHBOARD_TEMPLATE = (_TEMPLATES_DIR / "dashboard_new.html").read_text()
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def login_page(request: Request) -> HTMLResponse:
-    """Landing page — API key authentication."""
+    """Landing page — email/password authentication."""
     return HTMLResponse(_LOGIN_TEMPLATE)
 
 

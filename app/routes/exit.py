@@ -13,7 +13,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.auth import require_api_key
+from app.auth import require_api_key, require_session_with_api_key
 from app.config import settings
 from app.database import (
     count_evaluations,
@@ -42,7 +42,7 @@ async def list_results(
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
     status: str | None = Query(default=None, description="Filter by ALRT or NALT"),
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> EvaluationListResponse:
     tid = tenant_id or settings.default_tenant_id
     offset = (page - 1) * per_page
@@ -67,7 +67,7 @@ async def list_results(
 )
 async def stats_summary(
     tenant_id: str = Query(default=None),
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> StatsResponse:
     tid = tenant_id or settings.default_tenant_id
     counts = count_evaluations(tid)
@@ -90,7 +90,7 @@ async def stats_summary(
 async def get_result(
     msg_id: str,
     tenant_id: str = Query(default=None),
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ):
     tid = tenant_id or settings.default_tenant_id
     result = get_evaluation_by_msg_id(msg_id, tid)

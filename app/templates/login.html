@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lipana TPS — Login</title>
   <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%236366f1'/%3E%3Cpath d='M30 65V35l20 15-20 15zm20-15l20 15V35l-20 15z' fill='white'/%3E%3C/svg%3E" />
   <style>
     body { background: var(--bg-primary); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
     .login-wrapper { width: 100%; max-width: 420px; padding: 20px; }
@@ -12,6 +13,7 @@
     .login-logo { text-align: center; margin-bottom: 32px; }
     .login-logo h1 { font-size: 28px; font-weight: 700; letter-spacing: 2px; background: linear-gradient(135deg, var(--accent), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0 0 6px; }
     .login-logo p { color: var(--text-muted); font-size: 13px; margin: 0; letter-spacing: 1px; text-transform: uppercase; }
+    .login-logo .version-tag { display: inline-block; margin-top: 8px; padding: 2px 10px; font-size: 11px; color: var(--accent); border: 1px solid rgba(6,182,212,.3); border-radius: 12px; letter-spacing: 1.5px; }
     .form-group { margin-bottom: 20px; }
     .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }
     .form-group input { width: 100%; padding: 12px 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; transition: border-color .2s, box-shadow .2s; box-sizing: border-box; }
@@ -43,25 +45,22 @@
       <div class="login-logo">
         <h1>LIPANA TPS</h1>
         <p>Transaction Processing System</p>
+        <div class="version-tag">v2.0</div>
       </div>
       <form id="loginForm" onsubmit="handleLogin(event)">
         <div class="form-group">
-          <label for="apiKeyInput">API Key</label>
-          <input type="password" id="apiKeyInput" placeholder="Enter your API key" required autocomplete="current-password" />
+          <label for="emailInput">Email</label>
+          <input type="email" id="emailInput" placeholder="Enter your email" required autocomplete="email" />
         </div>
         <div class="form-group">
-          <label for="tenantInput">Tenant ID</label>
-          <input type="text" id="tenantInput" placeholder="e.g. default (optional)" autocomplete="organization" />
-        </div>
-        <div class="form-group">
-          <label for="baseUrlInput">Server URL</label>
-          <input type="url" id="baseUrlInput" placeholder="Auto-detected" />
+          <label for="passwordInput">Password</label>
+          <input type="password" id="passwordInput" placeholder="Enter your password" required autocomplete="current-password" />
         </div>
         <div class="remember-row">
           <input type="checkbox" id="rememberCheck" checked />
           <label for="rememberCheck">Remember this session</label>
         </div>
-        <button type="submit" class="login-btn" id="loginBtn">Connect</button>
+        <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
         <div class="login-error" id="loginError"></div>
       </form>
       <div class="login-footer">
@@ -83,11 +82,11 @@
       }
     })();
 
-    // Pre-fill from saved session
-    const saved = JSON.parse(localStorage.getItem('lipana_session') || '{}');
-    if (saved.apiKey) document.getElementById('apiKeyInput').value = saved.apiKey;
-    if (saved.tenantId) document.getElementById('tenantInput').value = saved.tenantId;
-    document.getElementById('baseUrlInput').value = saved.baseUrl || window.location.origin;
+    // Check if already logged in
+    const saved = JSON.parse(localStorage.getItem('lipana_session') || sessionStorage.getItem('lipana_session') || '{}');
+    if (saved.token) {
+      window.location.href = '/dashboard';
+    }
 
     async function handleLogin(e) {
       e.preventDefault();
@@ -95,35 +94,50 @@
       const errEl = document.getElementById('loginError');
       errEl.textContent = '';
 
-      const apiKey = document.getElementById('apiKeyInput').value.trim();
-      const tenantId = document.getElementById('tenantInput').value.trim() || 'default';
-      const baseUrl = document.getElementById('baseUrlInput').value.trim() || window.location.origin;
+      const email = document.getElementById('emailInput').value.trim();
+      const password = document.getElementById('passwordInput').value;
 
-      if (!apiKey) { errEl.textContent = 'API key is required'; return; }
+      if (!email || !password) { errEl.textContent = 'Email and password are required'; return; }
 
       btn.disabled = true;
-      btn.textContent = 'Connecting...';
+      btn.textContent = 'Signing in...';
 
       try {
-        const res = await fetch(baseUrl + '/api/v1/results/stats/summary?tenant_id=' + encodeURIComponent(tenantId), {
-          headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+        const baseUrl = window.location.origin;
+        const res = await fetch(baseUrl + '/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ detail: res.statusText }));
-          throw new Error(err.detail || 'Authentication failed');
+
+        const data = await res.json();
+
+        if (!data.success) {
+          throw new Error(data.message || 'Authentication failed');
         }
 
+        const sessionData = {
+          token: data.token,
+          email: data.email,
+          role: data.role,
+          fullName: data.full_name,
+          baseUrl: baseUrl,
+        };
+
         if (document.getElementById('rememberCheck').checked) {
-          localStorage.setItem('lipana_session', JSON.stringify({ apiKey, tenantId, baseUrl }));
+          localStorage.setItem('lipana_session', JSON.stringify(sessionData));
+        } else {
+          sessionStorage.setItem('lipana_session', JSON.stringify(sessionData));
         }
+
         window.location.href = '/dashboard';
       } catch (err) {
         errEl.textContent = err.message.includes('Failed to fetch')
-          ? 'Server unreachable — check URL'
+          ? 'Server unreachable'
           : err.message;
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Connect';
+        btn.textContent = 'Sign In';
       }
     }
   </script>

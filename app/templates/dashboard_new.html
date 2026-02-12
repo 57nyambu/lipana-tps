@@ -56,6 +56,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
           Submit Transaction
         </a>
+        <a class="nav-item" onclick="App.navigateTo('txtest')" data-page="txtest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Transaction Test
+          <span class="badge-new">v2</span>
+        </a>
         <a class="nav-item" onclick="App.navigateTo('lookup')" data-page="lookup">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           Lookup
@@ -88,6 +93,20 @@
         </a>
       </div>
 
+      <!-- ADMIN (role-gated) -->
+      <div class="nav-section admin-only" id="navAdminSection">
+        <div class="nav-section-title">Admin</div>
+        <a class="nav-item" onclick="App.navigateTo('users')" data-page="users">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          User Management
+          <span class="badge-new">v2</span>
+        </a>
+        <a class="nav-item" onclick="App.navigateTo('apikey')" data-page="apikey">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          API Key Config
+        </a>
+      </div>
+
       <!-- SYSTEM -->
       <div class="nav-section">
         <div class="nav-section-title">System</div>
@@ -107,9 +126,10 @@
         <div class="avatar" id="userAvatar">OP</div>
         <div class="user-info">
           <div class="user-name" id="userName">Operator</div>
-          <div class="user-role" id="userRole">Authenticated</div>
+          <div class="user-role" id="userRole">operator</div>
         </div>
       </div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;font-size:12px" onclick="App.navigateTo('profile')">Change Password</button>
     </div>
   </aside>
 
@@ -472,6 +492,159 @@
         </div>
       </section>
 
+      <!-- ═══════════ PAGE: TRANSACTION TEST ═══════════ -->
+      <section class="page-section" id="page-txtest">
+        <div class="grid-2">
+          <!-- Entry Test -->
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Entry Endpoint Test</h3>
+              <span class="badge badge-safe">POST /api/v1/transactions/evaluate</span>
+            </div>
+            <div class="panel-body">
+              <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Submit a transaction through the simplified entry endpoint and view the TMS response.</p>
+              <form onsubmit="App.testEntry(event)">
+                <div class="form-group"><label>Debtor Member ID</label><input class="form-input" id="testEntryDebtor" placeholder="dfsp001" value="dfsp001" required /></div>
+                <div class="form-group"><label>Creditor Member ID</label><input class="form-input" id="testEntryCreditor" placeholder="dfsp002" value="dfsp002" required /></div>
+                <div class="form-group"><label>Amount</label><input class="form-input" id="testEntryAmount" type="number" step="0.01" min="0.01" placeholder="100.00" value="100.00" required /></div>
+                <div style="display:flex;gap:12px">
+                  <div class="form-group" style="flex:1"><label>Currency</label>
+                    <select id="testEntryCurrency" class="form-input"><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="KES">KES</option><option value="ZAR">ZAR</option></select>
+                  </div>
+                  <div class="form-group" style="flex:1"><label>Status</label>
+                    <select id="testEntryStatus" class="form-input"><option value="ACCC">ACCC — Accepted</option><option value="RJCT">RJCT — Rejected</option></select>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary" id="testEntryBtn" style="width:100%">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Run Entry Test
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Exit Test -->
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Exit Endpoint Test</h3>
+              <span class="badge badge-safe">GET /api/v1/results</span>
+            </div>
+            <div class="panel-body">
+              <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Query evaluation results from the exit endpoint. Lookup by Message ID or list recent.</p>
+              <div class="form-group">
+                <label>Test Type</label>
+                <select id="testExitType" class="form-input" onchange="App.toggleExitTestType()">
+                  <option value="list">List Recent Results</option>
+                  <option value="lookup">Lookup by Message ID</option>
+                  <option value="stats">Get Statistics Summary</option>
+                </select>
+              </div>
+              <div id="testExitLookupField" style="display:none">
+                <div class="form-group"><label>Message ID</label><input class="form-input" id="testExitMsgId" placeholder="Enter MsgId from entry test..." /></div>
+              </div>
+              <div class="form-group"><label>Tenant ID (optional)</label><input class="form-input" id="testExitTenant" placeholder="Leave blank for default" /></div>
+              <button class="btn btn-primary" id="testExitBtn" style="width:100%" onclick="App.testExit()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run Exit Test
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Test Results Display -->
+        <div class="panel" id="testResultPanel" style="display:none">
+          <div class="panel-header">
+            <h3 id="testResultTitle">Test Result</h3>
+            <div style="display:flex;gap:8px">
+              <span class="badge" id="testResultStatus">—</span>
+              <span style="font-size:12px;color:var(--text-muted)" id="testResultTime">—</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <!-- Summary Cards -->
+            <div id="testResultSummary" style="margin-bottom:16px"></div>
+            <!-- Formatted Output -->
+            <div id="testResultFormatted" style="margin-bottom:16px"></div>
+            <!-- Raw JSON -->
+            <details style="margin-top:8px">
+              <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary);padding:8px 0;user-select:none">View Raw JSON Response</summary>
+              <pre class="form-result show" id="testResultRaw" style="margin-top:8px;max-height:400px;overflow:auto"></pre>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: USER MANAGEMENT (Admin) ═══════════ -->
+      <section class="page-section" id="page-users">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>System Users</h3>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-sm btn-primary" onclick="App.showAddUserModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add User
+              </button>
+              <button class="btn btn-sm btn-ghost" onclick="App.loadUsers()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Email</th><th>Full Name</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+                <tbody id="usersTableBody"><tr><td colspan="6"><div class="empty-state"><p>Loading users...</p></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: API KEY CONFIG (Admin) ═══════════ -->
+      <section class="page-section" id="page-apikey">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>TMS API Key Configuration</h3>
+          </div>
+          <div class="panel-body">
+            <p style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6">
+              Configure the Tazama TMS API key used for all pipeline communication.
+              This key is stored securely and used by the system to authenticate with TMS on behalf of all users.
+            </p>
+            <div class="config-card" style="margin-bottom:20px">
+              <div class="config-card-header">
+                <div class="config-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+                <div>
+                  <div class="config-card-title">Current Status</div>
+                  <div class="config-card-desc" id="apiKeyStatusText">Checking...</div>
+                </div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input class="form-input" type="password" id="adminApiKeyInput" placeholder="Enter the TMS API key..." />
+            </div>
+            <button class="btn btn-primary" onclick="App.saveApiKey()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+              Save API Key
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ PAGE: PROFILE ═══════════ -->
+      <section class="page-section" id="page-profile">
+        <div class="panel" style="max-width:500px">
+          <div class="panel-header"><h3>Change Password</h3></div>
+          <div class="panel-body">
+            <div class="form-group"><label>New Password</label><input class="form-input" type="password" id="newPassword" placeholder="Min 6 characters" /></div>
+            <div class="form-group"><label>Confirm Password</label><input class="form-input" type="password" id="confirmPassword" placeholder="Confirm new password" /></div>
+            <button class="btn btn-primary" onclick="App.changePassword()">Update Password</button>
+          </div>
+        </div>
+      </section>
+
       <!-- ═══════════ PAGE: SETTINGS ═══════════ -->
       <section class="page-section" id="page-settings">
         <div class="config-grid">
@@ -515,7 +688,7 @@
               <div><div class="config-card-title">Application</div><div class="config-card-desc">Runtime information</div></div>
             </div>
             <div class="config-fields">
-              <div class="config-field"><span class="config-field-label">Version</span><span class="config-field-value">1.0.0</span></div>
+              <div class="config-field"><span class="config-field-label">Version</span><span class="config-field-value">2.0.0</span></div>
               <div class="config-field"><span class="config-field-label">Framework</span><span class="config-field-value">FastAPI</span></div>
               <div class="config-field"><span class="config-field-label">Domain</span><span class="config-field-value">tazama.lipana.co</span></div>
               <div class="config-field"><span class="config-field-label">Auto-Refresh</span><span class="config-field-value" id="cfgAutoRefresh">Off</span></div>
@@ -544,6 +717,30 @@
     <div class="confirm-actions">
       <button class="btn btn-ghost" onclick="App.closeConfirm()">Cancel</button>
       <button class="btn btn-danger" id="confirmBtn" onclick="App.execConfirm()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal-overlay" id="addUserModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><h2>Add New User</h2><button class="modal-close" onclick="App.closeAddUserModal()">&times;</button></div>
+    <div class="modal-body" style="padding:20px">
+      <form onsubmit="App.createUser(event)">
+        <div class="form-group"><label>Email</label><input class="form-input" type="email" id="newUserEmail" placeholder="user@example.com" required /></div>
+        <div class="form-group"><label>Full Name</label><input class="form-input" id="newUserName" placeholder="John Doe" /></div>
+        <div class="form-group"><label>Default Password</label><input class="form-input" type="text" id="newUserPassword" placeholder="Min 6 characters" required /></div>
+        <div class="form-group"><label>Role</label>
+          <select class="form-input" id="newUserRole">
+            <option value="operator">Operator — Dashboard, transactions, results</option>
+            <option value="admin">Admin — Full access including system management</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:20px">
+          <button type="submit" class="btn btn-primary" style="flex:1">Create User</button>
+          <button type="button" class="btn btn-ghost" onclick="App.closeAddUserModal()">Cancel</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>

@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends
 
-from app.auth import require_api_key
+from app.auth import require_api_key, require_session_with_api_key
 from app.config import settings
 from app.models import (
     RawPacs002Request,
@@ -51,7 +51,7 @@ async def _forward_to_tms(pacs002: dict[str, Any], tenant_id: str) -> dict:
 )
 async def evaluate_simple(
     body: SimpleTransactionRequest,
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> TransactionSubmitResponse:
     tenant = body.resolved_tenant(settings.default_tenant_id)
     pacs002 = body.to_pacs002(tenant)
@@ -95,7 +95,7 @@ async def evaluate_simple(
 )
 async def evaluate_raw(
     body: RawPacs002Request,
-    _key: str = Depends(require_api_key),
+    _key: str = Depends(require_session_with_api_key),
 ) -> TransactionSubmitResponse:
     tenant = body.tenant_id or settings.default_tenant_id
     payload = body.payload.model_dump(by_alias=True)

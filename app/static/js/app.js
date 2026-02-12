@@ -1,12 +1,16 @@
 /* ============================================================
-   Lipana TPS — Dashboard Application
+   Lipana TPS v2.0 — Dashboard Application
    Domain: tazama.lipana.co
+   Features: JWT auth, RBAC, transaction testing, user management
    ============================================================ */
 
 const App = (() => {
   // ── State ──────────────────────────────────────────────────
-  let apiKey = '';
-  let tenantId = '';
+  let token = '';
+  let userEmail = '';
+  let userRole = '';
+  let userFullName = '';
+  let tenantId = 'DEFAULT';
   let baseUrl = '';
   let connected = false;
   let currentPage = 'overview';
@@ -26,6 +30,7 @@ const App = (() => {
     results: 'Evaluation Results',
     alerts: 'Alert Investigation',
     transactions: 'Submit Transaction',
+    txtest: 'Transaction Test',
     lookup: 'Lookup',
     pods: 'Pods & Services',
     nats: 'NATS Cluster',
@@ -33,9 +38,17 @@ const App = (() => {
     deployments: 'Deployments',
     events: 'Cluster Events',
     settings: 'Settings',
+    users: 'User Management',
+    apikey: 'API Key Configuration',
+    profile: 'My Profile',
   };
 
-  // Pipeline component definitions — maps pod name patterns to display info
+  // Pages restricted to admin role
+  const ADMIN_PAGES = ['users', 'apikey', 'pods', 'nats', 'logs', 'deployments', 'events'];
+  // Pages that require admin for destructive actions (read allowed for operators)
+  const ADMIN_ACTIONS_PAGES = ['pods', 'nats', 'logs', 'deployments', 'events'];
+
+  // Pipeline component definitions
   const PIPELINE_COMPONENTS = [
     { key: 'channel-router', label: 'Channel Router', short: 'CRSP', icon: '📡', pattern: /channel-router/i },
     { key: 'transaction-monitoring', label: 'TMS', short: 'TMS', icon: '🔍', pattern: /transaction-monitoring/i },
@@ -50,11 +63,22 @@ const App = (() => {
   const qs = sel => document.querySelector(sel);
   const qsa = sel => document.querySelectorAll(sel);
 
+  function isAdmin() { return userRole === 'admin'; }
+
   async function api(path, opts = {}) {
     const url = baseUrl + path;
-    const headers = { 'X-API-Key': apiKey, 'Content-Type': 'application/json', ...opts.headers };
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...opts.headers,
+    };
     try {
       const res = await fetch(url, { ...opts, headers });
+      if (res.status === 401) {
+        showToast('Session expired — please log in again', 'error');
+        setTimeout(logout, 1500);
+        throw new Error('Session expired');
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(err.detail || res.statusText);
@@ -64,6 +88,14 @@ const App = (() => {
       if (e.message.includes('Failed to fetch')) throw new Error('Network error — server unreachable');
       throw e;
     }
+  }
+
+  /** Timed API call — returns { data, elapsed } */
+  async function timedApi(path, opts = {}) {
+    const start = performance.now();
+    const data = await api(path, opts);
+    const elapsed = Math.round(performance.now() - start);
+    return { data, elapsed };
   }
 
   function escHtml(s) {
@@ -113,18 +145,47 @@ const App = (() => {
 
   // ── Init ───────────────────────────────────────────────────
   function init() {
-    const saved = JSON.parse(localStorage.getItem('lipana_session') || '{}');
-    apiKey = saved.apiKey || '';
-    tenantId = saved.tenantId || '';
+    const saved = JSON.parse(
+      localStorage.getItem('lipana_session') ||
+      sessionStorage.getItem('lipana_session') || '{}'
+    );
+    token = saved.token || '';
+    userEmail = saved.email || '';
+    userRole = saved.role || '';
+    userFullName = saved.fullName || '';
     baseUrl = saved.baseUrl || window.location.origin;
 
     startClock();
 
-    if (apiKey) {
+    if (token) {
+      applyRoleUI();
       connect();
     } else {
-      // No session — redirect to login
       window.location.href = '/';
+    }
+  }
+
+  // ── Role-Based UI ──────────────────────────────────────────
+  function applyRoleUI() {
+    // Update user display in sidebar
+    const initials = userFullName
+      ? userFullName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+      : userEmail.substring(0, 2).toUpperCase();
+
+    $('userAvatar').textContent = initials;
+    $('userName').textContent = userFullName || userEmail;
+    $('userRole').textContent = userRole;
+    $('userRole').style.color = isAdmin() ? 'var(--accent)' : 'var(--text-muted)';
+
+    // Show/hide admin nav section
+    const adminSection = $('navAdminSection');
+    if (adminSection) {
+      adminSection.style.display = isAdmin() ? '' : 'none';
+    }
+
+    // For operator role, hide destructive buttons on cluster pages
+    if (!isAdmin()) {
+      qsa('.admin-only').forEach(el => el.style.display = 'none');
     }
   }
 
@@ -153,7 +214,7 @@ const App = (() => {
 
       loadStats();
       loadClusterOverview();
-      showToast('Connected to Lipana TPS', 'success');
+      showToast(`Welcome, ${userFullName || userEmail}`, 'success');
     } catch (e) {
       connected = false;
       $('statusDot').classList.remove('connected');
@@ -173,9 +234,7 @@ const App = (() => {
       btn.classList.add('active');
       label.textContent = '30s';
       if (cfgEl) cfgEl.textContent = '30s interval';
-      autoRefreshTimer = setInterval(() => {
-        refreshCurrentPage();
-      }, 30000);
+      autoRefreshTimer = setInterval(() => refreshCurrentPage(), 30000);
       showToast('Auto-refresh enabled (30s)', 'info');
     } else {
       btn.classList.remove('active');
@@ -206,8 +265,6 @@ const App = (() => {
     if (!connected) return;
     try {
       const data = await api(`/api/v1/results/stats/summary?tenant_id=${encodeURIComponent(tenantId)}`);
-
-      // FIXED: Use correct field names from StatsResponse model
       const evals = data.evaluations_total ?? 0;
       const alerts = data.alerts ?? 0;
       const noAlerts = data.no_alerts ?? 0;
@@ -217,7 +274,6 @@ const App = (() => {
       $('statTxns').textContent = txns.toLocaleString();
       $('statAlerts').textContent = alerts.toLocaleString();
 
-      // Update alert badge in sidebar
       const alertBadge = $('alertBadge');
       if (alerts > 0) {
         alertBadge.textContent = alerts;
@@ -344,7 +400,6 @@ const App = (() => {
   async function loadAlerts() {
     if (!connected) return showToast('Not connected', 'error');
     try {
-      // Load stats for summary cards
       const statsData = await api(`/api/v1/results/stats/summary?tenant_id=${encodeURIComponent(tenantId)}`);
       const alerts = statsData.alerts ?? 0;
       const noAlerts = statsData.no_alerts ?? 0;
@@ -355,7 +410,6 @@ const App = (() => {
       $('alertClean').textContent = noAlerts.toLocaleString();
       $('alertRate').textContent = rate;
 
-      // Load alert results (ALRT only)
       let url = `/api/v1/results?tenant_id=${encodeURIComponent(tenantId)}&page=${alertsPage}&per_page=${resultsLimit}&status=ALRT`;
       const data = await api(url);
       const results = data.results || [];
@@ -382,7 +436,7 @@ const App = (() => {
   function alertNextPage() { alertsPage++; loadAlerts(); }
   function alertPrevPage() { if (alertsPage > 1) { alertsPage--; loadAlerts(); } }
 
-  // ── Transaction Submit (FIXED) ─────────────────────────────
+  // ── Transaction Submit ─────────────────────────────────────
   async function submitTransaction(e) {
     e.preventDefault();
     if (!connected) return showToast('Not connected', 'error');
@@ -391,7 +445,6 @@ const App = (() => {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> Submitting...';
 
-    // FIXED: Use correct field names matching SimpleTransactionRequest model
     const payload = {
       debtor_member: $('txDebtor').value.trim(),
       creditor_member: $('txCreditor').value.trim(),
@@ -411,13 +464,439 @@ const App = (() => {
       const el = $('txResult');
       el.textContent = JSON.stringify(data, null, 2);
       el.classList.add('show');
-      // FIXED: Use correct field name from TransactionSubmitResponse
       showToast('Transaction submitted: ' + (data.msg_id || 'OK'), data.success ? 'success' : 'warning');
     } catch (e) {
       showToast('Submit failed: ' + e.message, 'error');
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send Transaction';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  TRANSACTION TEST PAGE
+  // ═══════════════════════════════════════════════════════════
+
+  function toggleExitTestType() {
+    const type = $('testExitType').value;
+    $('testExitLookupField').style.display = type === 'lookup' ? '' : 'none';
+  }
+
+  async function testEntry(e) {
+    e.preventDefault();
+    if (!connected) return showToast('Not connected', 'error');
+
+    const btn = $('testEntryBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> Testing...';
+
+    const payload = {
+      debtor_member: $('testEntryDebtor').value.trim(),
+      creditor_member: $('testEntryCreditor').value.trim(),
+      amount: parseFloat($('testEntryAmount').value),
+      currency: $('testEntryCurrency').value,
+      status: $('testEntryStatus').value,
+    };
+
+    try {
+      const { data, elapsed } = await timedApi('/api/v1/transactions/evaluate', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      showTestResult({
+        title: 'Entry Test — POST /api/v1/transactions/evaluate',
+        success: data.success,
+        elapsed,
+        data,
+        summaryCards: [
+          { label: 'Status', value: data.success ? 'SUCCESS' : 'FAILED', color: data.success ? 'success' : 'danger' },
+          { label: 'Message ID', value: data.msg_id || '—', mono: true },
+          { label: 'Response Time', value: elapsed + 'ms', color: elapsed < 1000 ? 'success' : elapsed < 3000 ? 'warning' : 'danger' },
+          { label: 'Pipeline Message', value: data.message || '—' },
+        ],
+        formattedHtml: data.tms_response ? formatTmsResponse(data.tms_response) : '',
+      });
+
+      // Auto-fill the Message ID in exit test for convenience
+      if (data.msg_id) {
+        $('testExitMsgId').value = data.msg_id;
+      }
+
+      showToast(`Entry test complete (${elapsed}ms)`, data.success ? 'success' : 'warning');
+    } catch (e) {
+      showTestResult({
+        title: 'Entry Test — POST /api/v1/transactions/evaluate',
+        success: false,
+        elapsed: 0,
+        data: { error: e.message },
+        summaryCards: [
+          { label: 'Status', value: 'ERROR', color: 'danger' },
+          { label: 'Error', value: e.message },
+        ],
+      });
+      showToast('Entry test failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Entry Test';
+    }
+  }
+
+  async function testExit() {
+    if (!connected) return showToast('Not connected', 'error');
+
+    const type = $('testExitType').value;
+    const exitTenant = $('testExitTenant')?.value?.trim() || tenantId;
+    const btn = $('testExitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> Testing...';
+
+    try {
+      let result, title;
+
+      if (type === 'lookup') {
+        const msgId = $('testExitMsgId').value.trim();
+        if (!msgId) { showToast('Enter a Message ID', 'warning'); return; }
+        title = `Exit Test — GET /api/v1/results/${msgId}`;
+        result = await timedApi(`/api/v1/results/${encodeURIComponent(msgId)}?tenant_id=${encodeURIComponent(exitTenant)}`);
+
+        const evalData = result.data.evaluation || {};
+        const report = evalData.report || {};
+        showTestResult({
+          title,
+          success: true,
+          elapsed: result.elapsed,
+          data: result.data,
+          summaryCards: [
+            { label: 'Status', value: report.status || '—', color: report.status === 'ALRT' ? 'danger' : 'success' },
+            { label: 'Message ID', value: result.data.msg_id || msgId, mono: true },
+            { label: 'Response Time', value: result.elapsed + 'ms', color: result.elapsed < 500 ? 'success' : 'warning' },
+            { label: 'Tenant', value: result.data.tenant_id || exitTenant },
+          ],
+          formattedHtml: formatEvaluationResult(result.data),
+        });
+
+      } else if (type === 'stats') {
+        title = 'Exit Test — GET /api/v1/results/stats/summary';
+        result = await timedApi(`/api/v1/results/stats/summary?tenant_id=${encodeURIComponent(exitTenant)}`);
+
+        const d = result.data;
+        const alertRate = d.evaluations_total > 0
+          ? ((d.alerts / d.evaluations_total) * 100).toFixed(1) + '%' : '0%';
+
+        showTestResult({
+          title,
+          success: true,
+          elapsed: result.elapsed,
+          data: result.data,
+          summaryCards: [
+            { label: 'Total Evaluations', value: (d.evaluations_total ?? 0).toLocaleString() },
+            { label: 'Alerts', value: (d.alerts ?? 0).toLocaleString(), color: d.alerts > 0 ? 'danger' : 'success' },
+            { label: 'Clean', value: (d.no_alerts ?? 0).toLocaleString(), color: 'success' },
+            { label: 'Alert Rate', value: alertRate, color: parseFloat(alertRate) > 10 ? 'danger' : 'success' },
+            { label: 'Transactions', value: (d.event_history_transactions ?? 0).toLocaleString() },
+            { label: 'Response Time', value: result.elapsed + 'ms' },
+          ],
+        });
+
+      } else {
+        title = 'Exit Test — GET /api/v1/results';
+        result = await timedApi(`/api/v1/results?tenant_id=${encodeURIComponent(exitTenant)}&page=1&per_page=5`);
+
+        const d = result.data;
+        showTestResult({
+          title,
+          success: true,
+          elapsed: result.elapsed,
+          data: result.data,
+          summaryCards: [
+            { label: 'Total Results', value: (d.total ?? 0).toLocaleString() },
+            { label: 'Page', value: `${d.page}/${Math.ceil((d.total || 1) / (d.per_page || 20))}` },
+            { label: 'Returned', value: (d.results?.length ?? 0) + ' results' },
+            { label: 'Response Time', value: result.elapsed + 'ms' },
+          ],
+          formattedHtml: formatResultsList(d.results || []),
+        });
+      }
+
+      showToast(`Exit test complete (${result.elapsed}ms)`, 'success');
+    } catch (e) {
+      showTestResult({
+        title: 'Exit Test',
+        success: false,
+        elapsed: 0,
+        data: { error: e.message },
+        summaryCards: [
+          { label: 'Status', value: 'ERROR', color: 'danger' },
+          { label: 'Error', value: e.message },
+        ],
+      });
+      showToast('Exit test failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Exit Test';
+    }
+  }
+
+  function showTestResult({ title, success, elapsed, data, summaryCards = [], formattedHtml = '' }) {
+    $('testResultPanel').style.display = '';
+    $('testResultTitle').textContent = title;
+
+    const statusEl = $('testResultStatus');
+    statusEl.textContent = success ? 'SUCCESS' : 'FAILED';
+    statusEl.className = `badge ${success ? 'badge-safe' : 'badge-alert'}`;
+
+    $('testResultTime').textContent = elapsed ? `${elapsed}ms` : '';
+
+    // Summary cards
+    if (summaryCards.length) {
+      const cardsHtml = summaryCards.map(c => {
+        const color = c.color ? `var(--${c.color})` : 'var(--text)';
+        return `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:140px;flex:1">
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${escHtml(c.label)}</div>
+          <div style="font-size:16px;font-weight:600;color:${color};${c.mono ? 'font-family:JetBrains Mono,monospace;font-size:12px;word-break:break-all' : ''}">${escHtml(c.value)}</div>
+        </div>`;
+      }).join('');
+      $('testResultSummary').innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap">${cardsHtml}</div>`;
+    } else {
+      $('testResultSummary').innerHTML = '';
+    }
+
+    $('testResultFormatted').innerHTML = formattedHtml;
+    $('testResultRaw').textContent = JSON.stringify(data, null, 2);
+
+    // Scroll to result
+    $('testResultPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function formatTmsResponse(tmsResp) {
+    if (!tmsResp || typeof tmsResp !== 'object') return '';
+    // If error, show it prominently
+    if (tmsResp.error) {
+      return `<div style="background:var(--danger-bg);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px 16px">
+        <div style="font-weight:600;color:var(--danger);margin-bottom:4px">TMS Error</div>
+        <div style="font-size:13px;color:var(--text-secondary)">${escHtml(typeof tmsResp.error === 'string' ? tmsResp.error : JSON.stringify(tmsResp.error))}</div>
+      </div>`;
+    }
+    return `<div style="background:var(--success-bg);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px 16px">
+      <div style="font-weight:600;color:var(--success);margin-bottom:4px">TMS Response Received</div>
+      <div style="font-size:13px;color:var(--text-secondary)">The transaction was accepted by the Tazama pipeline for evaluation.</div>
+    </div>`;
+  }
+
+  function formatEvaluationResult(data) {
+    if (!data || !data.evaluation) return '';
+    const ev = data.evaluation;
+    const report = ev.report || {};
+    const isAlert = report.status === 'ALRT';
+    const typos = report.tadpResult?.typologyResult || [];
+
+    let html = `<div style="background:${isAlert ? 'var(--danger-bg)' : 'var(--success-bg)'};border:1px solid ${isAlert ? 'rgba(239,68,68,.3)' : 'rgba(16,185,129,.3)'};border-radius:10px;padding:16px;margin-bottom:12px">
+      <div style="font-weight:600;color:var(--${isAlert ? 'danger' : 'success'});font-size:15px;margin-bottom:8px">
+        ${isAlert ? 'ALERT — Suspicious Activity Detected' : 'CLEAN — No Suspicious Activity'}
+      </div>
+      <div style="font-size:13px;color:var(--text-secondary)">
+        Evaluation ID: <span style="font-family:monospace">${escHtml(report.evaluationID || '—')}</span>
+      </div>
+    </div>`;
+
+    if (typos.length) {
+      html += `<div style="margin-top:12px"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Typology Results (${typos.length})</div>`;
+      html += typos.map((t, i) => {
+        const typoCfg = t.cfg || '';
+        const typoResult = t.result ?? '—';
+        const ruleResults = t.ruleResults || [];
+        return `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-weight:600;font-size:13px;color:var(--text)">${escHtml(typoCfg || 'Typology ' + (i + 1))}</span>
+            <span style="font-size:12px;font-weight:600;color:${parseFloat(typoResult) > 0 ? 'var(--danger)' : 'var(--success)'}">${escHtml(String(typoResult))}</span>
+          </div>
+          ${ruleResults.length ? `<div style="font-size:12px;color:var(--text-muted)">Rules: ${ruleResults.map(r => `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;background:var(--bg-card);border-radius:4px;font-family:monospace">${escHtml(r.cfg || r.id || '?')}: ${escHtml(String(r.result ?? ''))}</span>`).join('')}</div>` : ''}
+        </div>`;
+      }).join('');
+      html += '</div>';
+    }
+
+    return html;
+  }
+
+  function formatResultsList(results) {
+    if (!results.length) return '<div style="color:var(--text-muted);font-size:13px">No results returned</div>';
+    return `<div class="table-wrap" style="margin-top:8px"><table class="data-table">
+      <thead><tr><th>Transaction ID</th><th>Status</th><th>Typologies</th><th>Processing Time</th><th>Evaluated At</th></tr></thead>
+      <tbody>${results.map(r => {
+        const isAlert = r.status === 'ALRT';
+        return `<tr>
+          <td class="mono" style="font-size:12px">${escHtml(r.transaction_id || '—')}</td>
+          <td><span class="badge ${isAlert ? 'badge-alert' : 'badge-safe'}">${isAlert ? 'ALERT' : 'CLEAN'}</span></td>
+          <td>${countTypologies(r.typology_results)}</td>
+          <td class="mono">${formatNs(r.processing_time_ns)}</td>
+          <td>${r.evaluated_at ? new Date(r.evaluated_at).toLocaleString() : '—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  USER MANAGEMENT (Admin Only)
+  // ═══════════════════════════════════════════════════════════
+
+  async function loadUsers() {
+    if (!isAdmin()) return;
+    try {
+      const data = await api('/api/v1/auth/users');
+      const users = data.users || [];
+
+      const rows = users.map(u => {
+        const roleClass = u.role === 'admin' ? 'badge-alert' : 'badge-safe';
+        const statusClass = u.is_active !== false ? 'badge-safe' : 'badge-neutral';
+        return `<tr>
+          <td class="mono">${escHtml(u.email)}</td>
+          <td>${escHtml(u.full_name || '—')}</td>
+          <td><span class="badge ${roleClass}">${escHtml(u.role)}</span></td>
+          <td><span class="badge ${statusClass}">${u.is_active !== false ? 'Active' : 'Disabled'}</span></td>
+          <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+          <td>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-xs btn-ghost" onclick="App.toggleUserRole('${escHtml(u.email)}', '${u.role === 'admin' ? 'operator' : 'admin'}')" title="Toggle role">${u.role === 'admin' ? 'Demote' : 'Promote'}</button>
+              <button class="btn btn-xs btn-ghost" onclick="App.toggleUserActive('${escHtml(u.email)}', ${u.is_active === false ? 'true' : 'false'})" title="Toggle status">${u.is_active !== false ? 'Disable' : 'Enable'}</button>
+              <button class="btn btn-xs btn-danger" onclick="App.deleteUserConfirm('${escHtml(u.email)}')">Delete</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+      $('usersTableBody').innerHTML = rows || '<tr><td colspan="6"><div class="empty-state"><p>No users found</p></div></td></tr>';
+    } catch (e) {
+      showToast('Failed to load users: ' + e.message, 'error');
+    }
+  }
+
+  function showAddUserModal() {
+    $('addUserModal').classList.add('show');
+    $('newUserEmail').value = '';
+    $('newUserName').value = '';
+    $('newUserPassword').value = '';
+    $('newUserRole').value = 'operator';
+  }
+
+  function closeAddUserModal() {
+    $('addUserModal').classList.remove('show');
+  }
+
+  async function createUser(e) {
+    e.preventDefault();
+    try {
+      await api('/api/v1/auth/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: $('newUserEmail').value.trim(),
+          full_name: $('newUserName').value.trim(),
+          password: $('newUserPassword').value,
+          role: $('newUserRole').value,
+        }),
+      });
+      closeAddUserModal();
+      showToast('User created successfully', 'success');
+      loadUsers();
+    } catch (e) {
+      showToast('Failed to create user: ' + e.message, 'error');
+    }
+  }
+
+  async function toggleUserRole(email, newRole) {
+    try {
+      await api(`/api/v1/auth/users/${encodeURIComponent(email)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole }),
+      });
+      showToast(`User ${email} role changed to ${newRole}`, 'success');
+      loadUsers();
+    } catch (e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  async function toggleUserActive(email, active) {
+    try {
+      await api(`/api/v1/auth/users/${encodeURIComponent(email)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_active: active }),
+      });
+      showToast(`User ${email} ${active ? 'enabled' : 'disabled'}`, 'success');
+      loadUsers();
+    } catch (e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  function deleteUserConfirm(email) {
+    showConfirm('Delete User', `Permanently delete user "${email}"? This cannot be undone.`, () => deleteUser(email));
+  }
+
+  async function deleteUser(email) {
+    try {
+      await api(`/api/v1/auth/users/${encodeURIComponent(email)}`, { method: 'DELETE' });
+      showToast(`User ${email} deleted`, 'success');
+      loadUsers();
+    } catch (e) {
+      showToast('Failed: ' + e.message, 'error');
+    }
+  }
+
+  // ── API Key Management (Admin) ─────────────────────────────
+  async function loadApiKeyStatus() {
+    if (!isAdmin()) return;
+    try {
+      const data = await api('/api/v1/auth/api-key/status');
+      const statusEl = $('apiKeyStatusText');
+      if (data.configured) {
+        statusEl.textContent = `API key configured (${data.key_preview})`;
+        statusEl.style.color = 'var(--success)';
+      } else {
+        statusEl.textContent = 'No API key configured — transactions will fail';
+        statusEl.style.color = 'var(--warning)';
+      }
+    } catch (e) {
+      console.warn('API key status check failed:', e);
+    }
+  }
+
+  async function saveApiKey() {
+    const key = $('adminApiKeyInput').value.trim();
+    if (!key) return showToast('Enter an API key', 'warning');
+
+    try {
+      await api('/api/v1/auth/api-key', {
+        method: 'POST',
+        body: JSON.stringify({ api_key: key }),
+      });
+      showToast('API key saved successfully', 'success');
+      $('adminApiKeyInput').value = '';
+      loadApiKeyStatus();
+    } catch (e) {
+      showToast('Failed to save API key: ' + e.message, 'error');
+    }
+  }
+
+  // ── Change Password ────────────────────────────────────────
+  async function changePassword() {
+    const newPass = $('newPassword').value;
+    const confirm = $('confirmPassword').value;
+
+    if (!newPass || newPass.length < 6) return showToast('Password must be at least 6 characters', 'warning');
+    if (newPass !== confirm) return showToast('Passwords do not match', 'warning');
+
+    try {
+      await api('/api/v1/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ new_password: newPass }),
+      });
+      showToast('Password changed successfully', 'success');
+      $('newPassword').value = '';
+      $('confirmPassword').value = '';
+    } catch (e) {
+      showToast('Failed: ' + e.message, 'error');
     }
   }
 
@@ -471,7 +950,6 @@ const App = (() => {
       const data = await api('/api/v1/system/pods');
       cachedPods = data.pods || [];
 
-      // Determine health per component
       const components = PIPELINE_COMPONENTS.map(comp => {
         const pod = cachedPods.find(p => comp.pattern.test(p.name));
         let status = 'unknown', statusLabel = 'Not Found';
@@ -488,7 +966,6 @@ const App = (() => {
         return { ...comp, status, statusLabel, pod };
       });
 
-      // Build pipeline flow SVG diagram
       const connector = `<div class="pipeline-connector"><svg viewBox="0 0 40 20"><line class="arrow-line" x1="0" y1="10" x2="34" y2="10"/><polygon class="arrow-head" points="34,5 40,10 34,15"/></svg></div>`;
 
       const flowHtml = components.map((c, i) => {
@@ -502,10 +979,8 @@ const App = (() => {
 
       $('pipelineFlow').innerHTML = flowHtml;
 
-      // Build table
       const tableHtml = components.map(c => {
         const p = c.pod;
-        const statusColor = c.status === 'healthy' ? 'var(--success)' : c.status === 'unhealthy' ? 'var(--danger)' : 'var(--text-muted)';
         const badgeClass = c.status === 'healthy' ? 'badge-safe' : c.status === 'unhealthy' ? 'badge-alert' : 'badge-neutral';
         return `<tr>
           <td><strong>${escHtml(c.label)}</strong></td>
@@ -519,7 +994,6 @@ const App = (() => {
       }).join('');
       $('pipelineTable').innerHTML = tableHtml;
 
-      // Health bar
       const healthy = components.filter(c => c.status === 'healthy').length;
       const pct = Math.round((healthy / components.length) * 100);
       updateHealthBar(pct);
@@ -529,14 +1003,12 @@ const App = (() => {
   }
 
   function updateHealthBar(pct) {
-    const fills = [$('pipelineHealthFill'), $('pipelineHealthFill2')];
-    const vals = [$('pipelineHealthPct'), $('pipelineHealthPct2')];
-    fills.forEach(el => {
+    [$('pipelineHealthFill'), $('pipelineHealthFill2')].forEach(el => {
       if (!el) return;
       el.style.width = pct + '%';
       el.className = 'health-bar-fill' + (pct < 50 ? ' danger' : pct < 80 ? ' warning' : '');
     });
-    vals.forEach(el => { if (el) el.textContent = pct + '%'; });
+    [$('pipelineHealthPct'), $('pipelineHealthPct2')].forEach(el => { if (el) el.textContent = pct + '%'; });
   }
 
   function viewPipelineComponent(key) {
@@ -573,9 +1045,6 @@ const App = (() => {
       $('cfgPodCount').textContent = total;
       $('cfgDeployCount').textContent = data.deployments?.total ?? 0;
 
-      // Update pipeline health on overview
-      const healthyDeploys = data.deployments?.healthy ?? 0;
-      const totalDeploys = data.deployments?.total ?? 1;
       const pct = Math.round((running / Math.max(total, 1)) * 100);
       updateHealthBar(pct);
     } catch (e) {
@@ -603,6 +1072,9 @@ const App = (() => {
         const statusClass = status === 'running' ? 'pod-running' : status === 'pending' ? 'pod-pending' : status === 'failed' ? 'pod-failed' : '';
         const statusColor = status === 'running' ? 'var(--success)' : status === 'pending' ? 'var(--warning)' : status === 'failed' ? 'var(--danger)' : 'var(--text-muted)';
         const age = timeAgo(p.created);
+        const restartBtn = isAdmin()
+          ? `<button class="btn btn-xs btn-danger" onclick="App.confirmRestartPod('${escHtml(p.name)}')">Restart</button>`
+          : '';
 
         return `<div class="pod-card ${statusClass}">
           <div class="pod-card-header">
@@ -624,7 +1096,7 @@ const App = (() => {
               Logs
             </button>
             <button class="btn btn-xs btn-ghost" onclick="App.viewPodDetail('${escHtml(p.name)}')">Detail</button>
-            <button class="btn btn-xs btn-danger" onclick="App.confirmRestartPod('${escHtml(p.name)}')">Restart</button>
+            ${restartBtn}
           </div>
         </div>`;
       }).join('');
@@ -670,7 +1142,8 @@ const App = (() => {
   }
 
   function confirmRestartPod(name) {
-    showConfirm('Restart Pod', `Are you sure you want to restart pod "${name}"? It will be deleted and recreated by its controller.`, () => restartPod(name));
+    if (!isAdmin()) return showToast('Admin access required', 'error');
+    showConfirm('Restart Pod', `Are you sure you want to restart pod "${name}"?`, () => restartPod(name));
   }
 
   async function restartPod(name) {
@@ -693,12 +1166,9 @@ const App = (() => {
     try {
       const data = await api('/api/v1/system/pods');
       const allPods = data.pods || [];
-
-      // Filter NATS core pods and utility pods
       const natsPods = allPods.filter(p => /nats/i.test(p.name) && !/box/i.test(p.name));
       const natsUtils = allPods.filter(p => /nats.*box/i.test(p.name));
 
-      // Stats
       const healthy = natsPods.filter(p => (p.status || '').toLowerCase() === 'running').length;
       const totalContainers = natsPods.reduce((sum, p) => {
         const match = (p.ready || '0/0').match(/(\d+)\/(\d+)/);
@@ -710,15 +1180,13 @@ const App = (() => {
       $('natsContainers').textContent = totalContainers;
 
       if (!natsPods.length) {
-        $('natsGrid').innerHTML = '<div class="empty-state"><p>No NATS pods found in cluster</p></div>';
+        $('natsGrid').innerHTML = '<div class="empty-state"><p>No NATS pods found</p></div>';
         return;
       }
 
       const natsHtml = natsPods.map(p => {
         const status = (p.status || '').toLowerCase();
         const statusColor = status === 'running' ? 'var(--success)' : 'var(--warning)';
-        const age = timeAgo(p.created);
-
         return `<div class="nats-node">
           <div class="nats-node-header">
             <div class="nats-icon">N</div>
@@ -731,7 +1199,7 @@ const App = (() => {
             <div class="nats-meta-item"><span class="nats-meta-label">Ready</span><span class="nats-meta-value">${escHtml(p.ready)}</span></div>
             <div class="nats-meta-item"><span class="nats-meta-label">Restarts</span><span class="nats-meta-value">${p.restarts}</span></div>
             <div class="nats-meta-item"><span class="nats-meta-label">IP</span><span class="nats-meta-value">${escHtml(p.ip || '—')}</span></div>
-            <div class="nats-meta-item"><span class="nats-meta-label">Age</span><span class="nats-meta-value">${age}</span></div>
+            <div class="nats-meta-item"><span class="nats-meta-label">Age</span><span class="nats-meta-value">${timeAgo(p.created)}</span></div>
             <div class="nats-meta-item"><span class="nats-meta-label">Node</span><span class="nats-meta-value">${escHtml(p.node || '—')}</span></div>
           </div>
           <div style="margin-top:12px;display:flex;gap:8px">
@@ -743,20 +1211,14 @@ const App = (() => {
 
       $('natsGrid').innerHTML = natsHtml;
 
-      // Utilities
       if (natsUtils.length) {
-        const utilHtml = natsUtils.map(p => {
-          return `<div class="deploy-row">
-            <div class="deploy-info">
-              <div class="deploy-name">${escHtml(p.name)}</div>
-              <div class="deploy-image">Utility pod · ${escHtml(p.ready)} ready · Restarts: ${p.restarts}</div>
-            </div>
-            <div class="deploy-actions">
-              <span class="badge ${(p.status||'').toLowerCase()==='running' ? 'badge-safe' : 'badge-warning'}">${escHtml(p.status)}</span>
-              <button class="btn btn-xs btn-ghost" onclick="App.viewPodLogs('${escHtml(p.name)}')">Logs</button>
-            </div>
-          </div>`;
-        }).join('');
+        const utilHtml = natsUtils.map(p => `<div class="deploy-row">
+          <div class="deploy-info"><div class="deploy-name">${escHtml(p.name)}</div><div class="deploy-image">Utility pod · ${escHtml(p.ready)} ready</div></div>
+          <div class="deploy-actions">
+            <span class="badge ${(p.status||'').toLowerCase()==='running' ? 'badge-safe' : 'badge-warning'}">${escHtml(p.status)}</span>
+            <button class="btn btn-xs btn-ghost" onclick="App.viewPodLogs('${escHtml(p.name)}')">Logs</button>
+          </div>
+        </div>`).join('');
         $('natsUtilsBody').innerHTML = utilHtml;
       } else {
         $('natsUtilsBody').innerHTML = '<div class="empty-state"><p>No NATS utility pods</p></div>';
@@ -779,11 +1241,10 @@ const App = (() => {
     try {
       const tail = $('logTailLines').value;
       const data = await api(`/api/v1/system/pods/${encodeURIComponent(pod)}/logs?tail_lines=${tail}`);
-
       $('logStatus').textContent = `${data.total_lines || 0} lines`;
 
       if (!data.log_lines?.length || (data.log_lines.length === 1 && !data.log_lines[0])) {
-        $('logTerminalBody').innerHTML = '<div class="log-empty"><p>No logs available for this pod</p></div>';
+        $('logTerminalBody').innerHTML = '<div class="log-empty"><p>No logs available</p></div>';
         return;
       }
 
@@ -791,18 +1252,15 @@ const App = (() => {
         let ts = '', content = line;
         const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\s+(.*)/s);
         if (tsMatch) { ts = tsMatch[1]; content = tsMatch[2]; }
-
         let level = '';
         const lower = content.toLowerCase();
         if (lower.includes('error') || lower.includes('fatal') || lower.includes('panic')) level = 'log-error';
         else if (lower.includes('warn')) level = 'log-warn';
         else if (lower.includes('info')) level = 'log-info';
-
         return `<div class="log-line ${level}"><span class="log-timestamp">${escHtml(ts)}</span><span class="log-content">${escHtml(content)}</span></div>`;
       }).join('');
 
       $('logTerminalBody').innerHTML = html;
-
       if ($('logAutoScroll').checked) {
         const body = $('logTerminalBody');
         body.scrollTop = body.scrollHeight;
@@ -834,6 +1292,16 @@ const App = (() => {
             `<span class="replica-dot ${i < ready ? 'active' : ''}"></span>`
           ).join('');
 
+          const adminActions = isAdmin() ? `
+            <div class="deploy-actions">
+              <div class="scale-control">
+                <button onclick="App.scaleDeploy('${escHtml(d.name)}', ${Math.max(0, total - 1)})">−</button>
+                <span class="scale-value">${total}</span>
+                <button onclick="App.scaleDeploy('${escHtml(d.name)}', ${total + 1})">+</button>
+              </div>
+              <button class="btn btn-xs btn-ghost" onclick="App.confirmRestartDeploy('${escHtml(d.name)}')">Restart</button>
+            </div>` : '';
+
           return `<div class="deploy-row">
             <div class="deploy-info">
               <div class="deploy-name">${escHtml(d.name)}</div>
@@ -843,21 +1311,14 @@ const App = (() => {
               <div class="replica-bar">${dots}</div>
               <span style="font-size:13px;color:var(--${healthy ? 'success' : 'warning'})">${ready}/${total}</span>
             </div>
-            <div class="deploy-actions">
-              <div class="scale-control">
-                <button onclick="App.scaleDeploy('${escHtml(d.name)}', ${Math.max(0, total - 1)})">−</button>
-                <span class="scale-value">${total}</span>
-                <button onclick="App.scaleDeploy('${escHtml(d.name)}', ${total + 1})">+</button>
-              </div>
-              <button class="btn btn-xs btn-ghost" onclick="App.confirmRestartDeploy('${escHtml(d.name)}')">Restart</button>
-            </div>
+            ${adminActions}
           </div>`;
         }).join('');
         $('deploymentsBody').innerHTML = html;
       }
 
       if (!svcData.services?.length) {
-        $('servicesBody').innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No services found</p></div></td></tr>';
+        $('servicesBody').innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No services</p></div></td></tr>';
       } else {
         const svcHtml = svcData.services.map(s => {
           const ports = (s.ports || []).map(p => `${p.port}${p.node_port ? ':'+p.node_port : ''}/${p.protocol}`).join(', ');
@@ -876,10 +1337,11 @@ const App = (() => {
   }
 
   async function scaleDeploy(name, replicas) {
+    if (!isAdmin()) return showToast('Admin access required', 'error');
     if (replicas < 0 || replicas > 10) return;
     try {
       await api(`/api/v1/system/deployments/${encodeURIComponent(name)}/scale?replicas=${replicas}`, { method: 'POST' });
-      showToast(`Scaled "${name}" to ${replicas} replicas`, 'success');
+      showToast(`Scaled "${name}" to ${replicas}`, 'success');
       setTimeout(loadDeployments, 1500);
     } catch (e) {
       showToast('Scale failed: ' + e.message, 'error');
@@ -887,7 +1349,8 @@ const App = (() => {
   }
 
   function confirmRestartDeploy(name) {
-    showConfirm('Rolling Restart', `Trigger a rolling restart of deployment "${name}"?`, () => restartDeploy(name));
+    if (!isAdmin()) return showToast('Admin access required', 'error');
+    showConfirm('Rolling Restart', `Trigger rolling restart of "${name}"?`, () => restartDeploy(name));
   }
 
   async function restartDeploy(name) {
@@ -910,7 +1373,6 @@ const App = (() => {
         $('eventsBody').innerHTML = '<div class="empty-state"><p>No recent events</p></div>';
         return;
       }
-
       const html = data.events.map(ev => {
         const icon = ev.type === 'Warning' ? 'warning' : 'normal';
         const emoji = ev.type === 'Warning' ? '⚠' : 'ℹ';
@@ -936,6 +1398,13 @@ const App = (() => {
   // ── Navigation ─────────────────────────────────────────────
   function navigateTo(page) {
     if (!pageTitles[page]) return;
+
+    // Role check for admin-only pages
+    if (['users', 'apikey'].includes(page) && !isAdmin()) {
+      showToast('Admin access required', 'error');
+      return;
+    }
+
     currentPage = page;
 
     qsa('.nav-item').forEach(el => {
@@ -962,6 +1431,8 @@ const App = (() => {
           break;
         case 'deployments': loadDeployments(); break;
         case 'events': loadEvents(); break;
+        case 'users': loadUsers(); break;
+        case 'apikey': loadApiKeyStatus(); break;
       }
     }
   }
@@ -992,6 +1463,7 @@ const App = (() => {
   // ── Logout ─────────────────────────────────────────────────
   function logout() {
     localStorage.removeItem('lipana_session');
+    sessionStorage.removeItem('lipana_session');
     clearInterval(autoRefreshTimer);
     clearInterval(clockTimer);
     window.location.href = '/';
@@ -1015,5 +1487,12 @@ const App = (() => {
     loadEvents,
     toggleAutoRefresh,
     showToast, logout,
+    // v2 — Transaction test
+    testEntry, testExit, toggleExitTestType,
+    // v2 — User management
+    loadUsers, showAddUserModal, closeAddUserModal, createUser,
+    toggleUserRole, toggleUserActive, deleteUserConfirm,
+    // v2 — Admin
+    saveApiKey, changePassword,
   };
 })();
