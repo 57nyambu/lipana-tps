@@ -23,11 +23,51 @@ logger = logging.getLogger("lipana.users")
 
 # ── Password Hashing ─────────────────────────────────────────
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+MAX_PASSWORD_BYTES = 72  # bcrypt hard limit
+
+
+def _safe_hash(password: str) -> str:
+    """Hash a password, truncating to 72 bytes (bcrypt limit)."""
+    return pwd_context.hash(password.encode("utf-8")[:MAX_PASSWORD_BYTES].decode("utf-8", errors="ignore"))
+
+
+def _safe_verify(password: str, hashed: str) -> bool:
+    """Verify a password against a hash, with bcrypt-safe truncation."""
+    try:
+        return pwd_context.verify(
+            password.encode("utf-8")[:MAX_PASSWORD_BYTES].decode("utf-8", errors="ignore"),
+            hashed,
+        )
+    except Exception:
+        return False
+
 
 # ── JWT Settings ──────────────────────────────────────────────
-JWT_SECRET_KEY = secrets.token_urlsafe(48)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_HOURS = 24
+
+# Persist the secret so sessions survive restarts
+_JWT_SECRET_FILE = Path(__file__).parent.parent / ".jwt_secret"
+
+def _load_or_create_jwt_secret() -> str:
+    """Load JWT secret from file, or create one if it doesn't exist."""
+    try:
+        if _JWT_SECRET_FILE.exists():
+            secret = _JWT_SECRET_FILE.read_text(encoding="utf-8").strip()
+            if len(secret) >= 32:
+                return secret
+    except Exception as exc:
+        logger.warning("Could not read JWT secret file: %s", exc)
+    secret = secrets.token_urlsafe(48)
+    try:
+        _JWT_SECRET_FILE.write_text(secret, encoding="utf-8")
+        _JWT_SECRET_FILE.chmod(0o600)
+        logger.info("Generated new JWT secret key")
+    except Exception as exc:
+        logger.warning("Could not persist JWT secret: %s (sessions won't survive restart)", exc)
+    return secret
+
+JWT_SECRET_KEY = _load_or_create_jwt_secret()
 
 # ── User Store Path ──────────────────────────────────────────
 USERS_FILE = Path(__file__).parent.parent / "users.json"
@@ -99,7 +139,7 @@ def ensure_admin_exists() -> None:
         admin_pass = "admin123"
         users[admin_email] = UserRecord(
             email=admin_email,
-            hashed_password=pwd_context.hash(admin_pass),
+            hashed_password=_safe_hash(admin_pass),
             role="admin",
             full_name="System Admin",
         ).model_dump()
@@ -137,7 +177,7 @@ def create_user(req: UserCreateRequest) -> UserRecord | None:
         return None
     record = UserRecord(
         email=email,
-        hashed_password=pwd_context.hash(req.password),
+        hashed_password=_safe_hash(req.password),
         role=req.role,
         full_name=req.full_name,
     )
@@ -161,7 +201,7 @@ def update_user(email: str, req: UserUpdateRequest) -> UserRecord | None:
     if req.is_active is not None:
         data["is_active"] = req.is_active
     if req.password is not None:
-        data["hashed_password"] = pwd_context.hash(req.password)
+        data["hashed_password"] = _safe_hash(req.password)
     users[email] = data
     _save_users(users)
     return UserRecord(**data)
@@ -208,7 +248,7 @@ def authenticate_user(email: str, password: str) -> UserRecord | None:
         return None
     if not user.is_active:
         return None
-    if not pwd_context.verify(password, user.hashed_password):
+    if not _safe_verify(password, user.hashed_password):
         return None
     return user
 

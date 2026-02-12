@@ -8,6 +8,8 @@ venv/
 *.egg-info/
 dist/
 build/
+.jwt_secret
+users.json
 .mypy_cache/
 .pytest_cache/
 .idea/

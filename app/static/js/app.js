@@ -881,18 +881,21 @@ const App = (() => {
 
   // ── Change Password ────────────────────────────────────────
   async function changePassword() {
+    const current = $('currentPassword').value;
     const newPass = $('newPassword').value;
     const confirm = $('confirmPassword').value;
 
     if (!newPass || newPass.length < 6) return showToast('Password must be at least 6 characters', 'warning');
+    if (newPass.length > 128) return showToast('Password too long (max 128 characters)', 'warning');
     if (newPass !== confirm) return showToast('Passwords do not match', 'warning');
 
     try {
       await api('/api/v1/auth/change-password', {
         method: 'POST',
-        body: JSON.stringify({ new_password: newPass }),
+        body: JSON.stringify({ current_password: current, new_password: newPass }),
       });
       showToast('Password changed successfully', 'success');
+      $('currentPassword').value = '';
       $('newPassword').value = '';
       $('confirmPassword').value = '';
     } catch (e) {

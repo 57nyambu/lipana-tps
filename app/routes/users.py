@@ -98,6 +98,12 @@ async def create_new_user(
     body: UserCreateRequest,
     _admin: dict = Depends(require_admin),
 ) -> dict[str, Any]:
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(body.password) > 128:
+        raise HTTPException(status_code=400, detail="Password too long (max 128 characters)")
+    if not body.email or "@" not in body.email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
     user = create_user(body)
     if user is None:
         raise HTTPException(status_code=409, detail="User with this email already exists")
@@ -198,9 +204,19 @@ async def change_password(
     body: dict,
     session: dict = Depends(require_session),
 ) -> dict[str, Any]:
+    current_password = body.get("current_password", "").strip()
     new_password = body.get("new_password", "").strip()
+
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(new_password) > 128:
+        raise HTTPException(status_code=400, detail="Password too long (max 128 characters)")
+
+    # Verify current password if provided (skip for admins resetting theirs)
+    if current_password:
+        from app.users import authenticate_user as _auth
+        if _auth(session["sub"], current_password) is None:
+            raise HTTPException(status_code=403, detail="Current password is incorrect")
 
     user = update_user(session["sub"], UserUpdateRequest(password=new_password))
     if user is None:
