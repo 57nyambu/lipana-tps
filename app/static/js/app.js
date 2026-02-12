@@ -122,6 +122,9 @@ const App = (() => {
 
     if (apiKey) {
       connect();
+    } else {
+      // No session — redirect to login
+      window.location.href = '/';
     }
   }
 

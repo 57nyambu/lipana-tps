@@ -19,6 +19,7 @@ spec:
       labels:
         app: lipana-tps
     spec:
+      serviceAccountName: lipana-tps
       containers:
         - name: lipana-tps
           image: lipana-tps:latest
@@ -93,3 +94,39 @@ spec:
       targetPort: 8100
       nodePort: 30810
       protocol: TCP
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lipana-tps
+  namespace: tazama
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lipana-tps
+  namespace: tazama
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "events"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lipana-tps
+  namespace: tazama
+subjects:
+  - kind: ServiceAccount
+    name: lipana-tps
+    namespace: tazama
+roleRef:
+  kind: Role
+  name: lipana-tps
+  apiGroup: rbac.authorization.k8s.io
