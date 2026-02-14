@@ -32,8 +32,9 @@ def _get_conn(dsn: str) -> Generator:
 #  Evaluation DB queries
 # ------------------------------------------------------------------ #
 
-def _discover_eval_table(conn) -> str:
-    """Discover the actual evaluation table name in the database."""
+def _discover_eval_table(conn) -> str | None:
+    """Discover the actual evaluation table name in the database.
+    Returns None if no user tables exist yet."""
     with conn.cursor() as cur:
         cur.execute("""
             SELECT table_name FROM information_schema.tables
@@ -43,6 +44,9 @@ def _discover_eval_table(conn) -> str:
         """)
         tables = [r[0] for r in cur.fetchall()]
         logger.info("Evaluation DB tables: %s", tables)
+        if not tables:
+            logger.info("No tables in evaluation DB — pipeline has not processed anything yet")
+            return None
         # Try common Tazama table names
         for candidate in ["evaluationresult", "evaluationresults", "evaluation", "evaluations", "results"]:
             if candidate in tables:
@@ -54,14 +58,16 @@ def _discover_eval_table(conn) -> str:
         return "evaluation"
 
 
-# Cache the discovered table name
+# Cache the discovered table name — use sentinel to distinguish "not yet checked" from "checked, no tables"
+_eval_table_checked = False
 _eval_table_name: str | None = None
 
 
-def _get_eval_table(conn) -> str:
-    global _eval_table_name
-    if _eval_table_name is None:
+def _get_eval_table(conn) -> str | None:
+    global _eval_table_name, _eval_table_checked
+    if not _eval_table_checked:
         _eval_table_name = _discover_eval_table(conn)
+        _eval_table_checked = True
         logger.info("Using evaluation table: %s", _eval_table_name)
     return _eval_table_name
 
@@ -71,6 +77,8 @@ def get_evaluation_by_msg_id(msg_id: str, tenant_id: str) -> dict | None:
     try:
         with _get_conn(settings.eval_dsn) as conn:
             tbl = _get_eval_table(conn)
+            if tbl is None:
+                return None
             sql = f"""
                 SELECT evaluation
                   FROM {tbl}
@@ -82,11 +90,8 @@ def get_evaluation_by_msg_id(msg_id: str, tenant_id: str) -> dict | None:
                 cur.execute(sql, (msg_id, tenant_id))
                 row = cur.fetchone()
                 return dict(row["evaluation"]) if row else None
-    except psycopg2.errors.UndefinedTable:
-        logger.warning("Evaluation table not found — no evaluations yet?")
-        return None
     except Exception as exc:
-        logger.error("get_evaluation_by_msg_id failed: %s", exc)
+        logger.warning("get_evaluation_by_msg_id failed: %s", exc)
         return None
 
 
@@ -100,6 +105,8 @@ def list_evaluations(
     try:
         with _get_conn(settings.eval_dsn) as conn:
             tbl = _get_eval_table(conn)
+            if tbl is None:
+                return []
             conditions = ['"tenantid" = %s']
             params: list[Any] = [tenant_id]
 
@@ -128,11 +135,8 @@ def list_evaluations(
                 cur.execute(sql, params)
                 rows = cur.fetchall()
                 return [dict(r) for r in rows]
-    except psycopg2.errors.UndefinedTable:
-        logger.warning("Evaluation table not found — no evaluations yet?")
-        return []
     except Exception as exc:
-        logger.error("list_evaluations failed: %s", exc)
+        logger.warning("list_evaluations failed: %s", exc)
         return []
 
 
@@ -141,6 +145,8 @@ def count_evaluations(tenant_id: str, status_filter: str | None = None) -> dict:
     try:
         with _get_conn(settings.eval_dsn) as conn:
             tbl = _get_eval_table(conn)
+            if tbl is None:
+                return {"total": 0, "alerts": 0, "no_alerts": 0}
             sql = f"""
                 SELECT
                     COUNT(*)                                                        AS total,
@@ -153,11 +159,8 @@ def count_evaluations(tenant_id: str, status_filter: str | None = None) -> dict:
                 cur.execute(sql, (tenant_id,))
                 row = cur.fetchone()
                 return dict(row) if row else {"total": 0, "alerts": 0, "no_alerts": 0}
-    except psycopg2.errors.UndefinedTable:
-        logger.warning("Evaluation table not found — no evaluations yet?")
-        return {"total": 0, "alerts": 0, "no_alerts": 0}
     except Exception as exc:
-        logger.error("count_evaluations failed: %s", exc)
+        logger.warning("count_evaluations failed: %s", exc)
         return {"total": 0, "alerts": 0, "no_alerts": 0}
 
 
@@ -178,14 +181,19 @@ def count_transactions(tenant_id: str) -> int:
                 """)
                 tables = [r[0] for r in tcur.fetchall()]
                 logger.info("Event history DB tables: %s", tables)
-                tbl = "transaction"  # default
-                for candidate in ["transactionhistory", "transaction_history", "transaction", "transactions"]:
-                    if candidate in tables:
-                        tbl = candidate
-                        break
-                else:
-                    if len(tables) == 1:
-                        tbl = tables[0]
+
+            if not tables:
+                logger.info("No tables in event_history DB — no transactions yet")
+                return 0
+
+            tbl = "transaction"  # default
+            for candidate in ["transactionhistory", "transaction_history", "transaction", "transactions"]:
+                if candidate in tables:
+                    tbl = candidate
+                    break
+            else:
+                if len(tables) == 1:
+                    tbl = tables[0]
 
             sql = f"""
                 SELECT COUNT(*)::int AS cnt
@@ -196,9 +204,6 @@ def count_transactions(tenant_id: str) -> int:
                 cur.execute(sql, (tenant_id,))
                 row = cur.fetchone()
                 return row["cnt"] if row else 0
-    except psycopg2.errors.UndefinedTable:
-        logger.warning("Transaction table not found — no transactions yet?")
-        return 0
     except Exception as exc:
-        logger.error("count_transactions failed: %s", exc)
+        logger.warning("count_transactions failed: %s", exc)
         return 0
