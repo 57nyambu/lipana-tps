@@ -32,20 +32,62 @@ def _get_conn(dsn: str) -> Generator:
 #  Evaluation DB queries
 # ------------------------------------------------------------------ #
 
+def _discover_eval_table(conn) -> str:
+    """Discover the actual evaluation table name in the database."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT table_name FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_type = 'BASE TABLE'
+            ORDER BY table_name;
+        """)
+        tables = [r[0] for r in cur.fetchall()]
+        logger.info("Evaluation DB tables: %s", tables)
+        # Try common Tazama table names
+        for candidate in ["evaluationresult", "evaluationresults", "evaluation", "evaluations", "results"]:
+            if candidate in tables:
+                return candidate
+        # Return first table if only one exists
+        if len(tables) == 1:
+            return tables[0]
+        # Fallback
+        return "evaluation"
+
+
+# Cache the discovered table name
+_eval_table_name: str | None = None
+
+
+def _get_eval_table(conn) -> str:
+    global _eval_table_name
+    if _eval_table_name is None:
+        _eval_table_name = _discover_eval_table(conn)
+        logger.info("Using evaluation table: %s", _eval_table_name)
+    return _eval_table_name
+
+
 def get_evaluation_by_msg_id(msg_id: str, tenant_id: str) -> dict | None:
     """Return the full evaluation JSONB for a given MsgId + tenant."""
-    sql = """
-        SELECT evaluation
-          FROM evaluation
-         WHERE "messageid" = %s
-           AND "tenantid" = %s
-         LIMIT 1;
-    """
-    with _get_conn(settings.eval_dsn) as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, (msg_id, tenant_id))
-            row = cur.fetchone()
-            return dict(row["evaluation"]) if row else None
+    try:
+        with _get_conn(settings.eval_dsn) as conn:
+            tbl = _get_eval_table(conn)
+            sql = f"""
+                SELECT evaluation
+                  FROM {tbl}
+                 WHERE "messageid" = %s
+                   AND "tenantid" = %s
+                 LIMIT 1;
+            """
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, (msg_id, tenant_id))
+                row = cur.fetchone()
+                return dict(row["evaluation"]) if row else None
+    except psycopg2.errors.UndefinedTable:
+        logger.warning("Evaluation table not found — no evaluations yet?")
+        return None
+    except Exception as exc:
+        logger.error("get_evaluation_by_msg_id failed: %s", exc)
+        return None
 
 
 def list_evaluations(
@@ -55,52 +97,68 @@ def list_evaluations(
     status_filter: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return a paginated list of evaluations for a tenant."""
-    conditions = ["\"tenantid\" = %s"]
-    params: list[Any] = [tenant_id]
+    try:
+        with _get_conn(settings.eval_dsn) as conn:
+            tbl = _get_eval_table(conn)
+            conditions = ['"tenantid" = %s']
+            params: list[Any] = [tenant_id]
 
-    if status_filter and status_filter in ("ALRT", "NALT"):
-        conditions.append("evaluation->'report'->>'status' = %s")
-        params.append(status_filter)
+            if status_filter and status_filter in ("ALRT", "NALT"):
+                conditions.append("evaluation->'report'->>'status' = %s")
+                params.append(status_filter)
 
-    where = " AND ".join(conditions)
-    sql = f"""
-        SELECT
-            id,
-            evaluation->>'transactionID'                   AS transaction_id,
-            evaluation->'report'->>'status'                AS status,
-            evaluation->'report'->>'evaluationID'          AS evaluation_id,
-            evaluation->'report'->>'timestamp'             AS evaluated_at,
-            evaluation->'report'->'tadpResult'->>'prcgTm'  AS processing_time_ns,
-            evaluation->'report'->'tadpResult'->'typologyResult' AS typology_results
-        FROM evaluation
-        WHERE {where}
-        ORDER BY id DESC
-        LIMIT %s OFFSET %s;
-    """
-    params.extend([limit, offset])
+            where = " AND ".join(conditions)
+            sql = f"""
+                SELECT
+                    id,
+                    evaluation->>'transactionID'                   AS transaction_id,
+                    evaluation->'report'->>'status'                AS status,
+                    evaluation->'report'->>'evaluationID'          AS evaluation_id,
+                    evaluation->'report'->>'timestamp'             AS evaluated_at,
+                    evaluation->'report'->'tadpResult'->>'prcgTm'  AS processing_time_ns,
+                    evaluation->'report'->'tadpResult'->'typologyResult' AS typology_results
+                FROM {tbl}
+                WHERE {where}
+                ORDER BY id DESC
+                LIMIT %s OFFSET %s;
+            """
+            params.extend([limit, offset])
 
-    with _get_conn(settings.eval_dsn) as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
-            return [dict(r) for r in rows]
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+                return [dict(r) for r in rows]
+    except psycopg2.errors.UndefinedTable:
+        logger.warning("Evaluation table not found — no evaluations yet?")
+        return []
+    except Exception as exc:
+        logger.error("list_evaluations failed: %s", exc)
+        return []
 
 
 def count_evaluations(tenant_id: str, status_filter: str | None = None) -> dict:
     """Return total, alert, and no-alert counts."""
-    sql = """
-        SELECT
-            COUNT(*)                                                        AS total,
-            COUNT(*) FILTER (WHERE evaluation->'report'->>'status' = 'ALRT') AS alerts,
-            COUNT(*) FILTER (WHERE evaluation->'report'->>'status' = 'NALT') AS no_alerts
-        FROM evaluation
-        WHERE "tenantid" = %s;
-    """
-    with _get_conn(settings.eval_dsn) as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, (tenant_id,))
-            row = cur.fetchone()
-            return dict(row) if row else {"total": 0, "alerts": 0, "no_alerts": 0}
+    try:
+        with _get_conn(settings.eval_dsn) as conn:
+            tbl = _get_eval_table(conn)
+            sql = f"""
+                SELECT
+                    COUNT(*)                                                        AS total,
+                    COUNT(*) FILTER (WHERE evaluation->'report'->>'status' = 'ALRT') AS alerts,
+                    COUNT(*) FILTER (WHERE evaluation->'report'->>'status' = 'NALT') AS no_alerts
+                FROM {tbl}
+                WHERE "tenantid" = %s;
+            """
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, (tenant_id,))
+                row = cur.fetchone()
+                return dict(row) if row else {"total": 0, "alerts": 0, "no_alerts": 0}
+    except psycopg2.errors.UndefinedTable:
+        logger.warning("Evaluation table not found — no evaluations yet?")
+        return {"total": 0, "alerts": 0, "no_alerts": 0}
+    except Exception as exc:
+        logger.error("count_evaluations failed: %s", exc)
+        return {"total": 0, "alerts": 0, "no_alerts": 0}
 
 
 # ------------------------------------------------------------------ #
@@ -109,13 +167,38 @@ def count_evaluations(tenant_id: str, status_filter: str | None = None) -> dict:
 
 def count_transactions(tenant_id: str) -> int:
     """Count total transactions in event history for a tenant."""
-    sql = """
-        SELECT COUNT(*)::int AS cnt
-          FROM transaction
-         WHERE tenantid = %s;
-    """
-    with _get_conn(settings.event_dsn) as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, (tenant_id,))
-            row = cur.fetchone()
-            return row["cnt"] if row else 0
+    try:
+        with _get_conn(settings.event_dsn) as conn:
+            # Discover actual table name
+            with conn.cursor() as tcur:
+                tcur.execute("""
+                    SELECT table_name FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                    ORDER BY table_name;
+                """)
+                tables = [r[0] for r in tcur.fetchall()]
+                logger.info("Event history DB tables: %s", tables)
+                tbl = "transaction"  # default
+                for candidate in ["transactionhistory", "transaction_history", "transaction", "transactions"]:
+                    if candidate in tables:
+                        tbl = candidate
+                        break
+                else:
+                    if len(tables) == 1:
+                        tbl = tables[0]
+
+            sql = f"""
+                SELECT COUNT(*)::int AS cnt
+                  FROM {tbl}
+                 WHERE tenantid = %s;
+            """
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, (tenant_id,))
+                row = cur.fetchone()
+                return row["cnt"] if row else 0
+    except psycopg2.errors.UndefinedTable:
+        logger.warning("Transaction table not found — no transactions yet?")
+        return 0
+    except Exception as exc:
+        logger.error("count_transactions failed: %s", exc)
+        return 0

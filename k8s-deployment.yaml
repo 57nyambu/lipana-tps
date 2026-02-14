@@ -60,7 +60,7 @@ data:
   APP_PORT: "8100"
   LOG_LEVEL: "info"
   API_KEYS: "CHANGE_ME"                                     # ./deploy.sh key
-  TMS_BASE_URL: "http://gateway.tazama.svc.cluster.local:3000"
+  TMS_BASE_URL: "http://transaction-monitoring-service:4000"
   TMS_TIMEOUT: "30"
   EVAL_DB_HOST: "postgres.tazama.svc.cluster.local"
   EVAL_DB_PORT: "5432"
