@@ -90,7 +90,7 @@ LOG_LEVEL=info
 API_KEYS=your-secure-api-key-here
 
 # Tazama TMS
-TMS_BASE_URL=http://gateway.tazama.svc.cluster.local:3000
+TMS_BASE_URL=http://gateway.tazama.svc.cluster.local:4000
 TMS_TIMEOUT=30
 
 # Evaluation DB
