@@ -26,15 +26,15 @@ logger = logging.getLogger("lipana.entry")
 router = APIRouter(prefix="/api/v1/transactions", tags=["Entry — Submit"])
 
 
-async def _forward_to_tms(pacs002: dict[str, Any], tenant_id: str) -> dict:
-    """POST the pacs.002 payload to the Tazama TMS service."""
-    url = f"{settings.tms_base_url}/v1/evaluate/iso20022/pacs.002.001.12"
+async def _forward_to_tms(payload: dict[str, Any], tenant_id: str, msg_type: str = "pacs.002.001.12") -> dict:
+    """POST an ISO 20022 payload to the Tazama TMS service."""
+    url = f"{settings.tms_base_url}/v1/evaluate/iso20022/{msg_type}"
     headers = {
         "Content-Type": "application/json",
         "x-tenant-id": tenant_id,
     }
     async with httpx.AsyncClient(timeout=settings.tms_timeout) as client:
-        resp = await client.post(url, json=pacs002, headers=headers)
+        resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         return resp.json()
 
@@ -53,14 +53,42 @@ async def evaluate_simple(
     body: SimpleTransactionRequest,
     _key: str = Depends(require_session_with_api_key),
 ) -> TransactionSubmitResponse:
-    tenant = body.resolved_tenant(settings.default_tenant_id)
-    pacs002 = body.to_pacs002(tenant)
-    msg_id = pacs002["FIToFIPmtSts"]["GrpHdr"]["MsgId"]
+    from uuid import uuid4
 
-    logger.info("Submitting transaction %s for tenant %s", msg_id, tenant)
+    tenant = body.resolved_tenant(settings.default_tenant_id)
+    # Shared EndToEndId links the pacs.008 and pacs.002 together
+    end_to_end_id = uuid4().hex
+
+    # Step 1: Send pacs.008 (credit transfer) — creates accounts/entities
+    pacs008 = body.to_pacs008(tenant, end_to_end_id)
+    pacs008_msg_id = pacs008["FIToFICstmrCdtTrf"]["GrpHdr"]["MsgId"]
+    logger.info("Step 1: Sending pacs.008 %s for tenant %s", pacs008_msg_id, tenant)
 
     try:
-        tms_resp = await _forward_to_tms(pacs002, tenant)
+        await _forward_to_tms(pacs008, tenant, "pacs.008.001.10")
+    except httpx.HTTPStatusError as exc:
+        logger.error("TMS pacs.008 returned %s: %s", exc.response.status_code, exc.response.text)
+        return TransactionSubmitResponse(
+            success=False,
+            message=f"TMS pacs.008 error: {exc.response.status_code}",
+            msg_id=pacs008_msg_id,
+            tms_response={"error": exc.response.text},
+        )
+    except httpx.RequestError as exc:
+        logger.error("Failed to reach TMS for pacs.008: %s", exc)
+        return TransactionSubmitResponse(
+            success=False,
+            message=f"Cannot reach TMS at {settings.tms_base_url}: {exc}",
+            msg_id=pacs008_msg_id,
+        )
+
+    # Step 2: Send pacs.002 (payment status) — triggers evaluation
+    pacs002 = body.to_pacs002(tenant, end_to_end_id)
+    msg_id = pacs002["FIToFIPmtSts"]["GrpHdr"]["MsgId"]
+    logger.info("Step 2: Sending pacs.002 %s for tenant %s (E2E: %s)", msg_id, tenant, end_to_end_id)
+
+    try:
+        tms_resp = await _forward_to_tms(pacs002, tenant, "pacs.002.001.12")
         return TransactionSubmitResponse(
             success=True,
             message="Transaction submitted to Tazama pipeline",
@@ -68,15 +96,15 @@ async def evaluate_simple(
             tms_response=tms_resp,
         )
     except httpx.HTTPStatusError as exc:
-        logger.error("TMS returned %s: %s", exc.response.status_code, exc.response.text)
+        logger.error("TMS pacs.002 returned %s: %s", exc.response.status_code, exc.response.text)
         return TransactionSubmitResponse(
             success=False,
-            message=f"TMS error: {exc.response.status_code}",
+            message=f"TMS pacs.002 error: {exc.response.status_code}",
             msg_id=msg_id,
             tms_response={"error": exc.response.text},
         )
     except httpx.RequestError as exc:
-        logger.error("Failed to reach TMS: %s", exc)
+        logger.error("Failed to reach TMS for pacs.002: %s", exc)
         return TransactionSubmitResponse(
             success=False,
             message=f"Cannot reach TMS at {settings.tms_base_url}: {exc}",

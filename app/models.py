@@ -95,12 +95,111 @@ class SimpleTransactionRequest(BaseModel):
         default=None, description="Tenant ID (defaults to server setting)"
     )
 
-    def to_pacs002(self, tenant_id_fallback: str) -> dict[str, Any]:
+    def to_pacs008(self, tenant_id: str, end_to_end_id: str | None = None) -> dict[str, Any]:
+        """Build the pacs.008 (credit transfer) that must be sent BEFORE pacs.002."""
+        now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        e2e_id = end_to_end_id or uuid4().hex
+        debtor_entity_id = uuid4().hex
+        creditor_entity_id = uuid4().hex
+        return {
+            "TxTp": "pacs.008.001.10",
+            "TenantId": tenant_id,
+            "FIToFICstmrCdtTrf": {
+                "GrpHdr": {
+                    "MsgId": uuid4().hex,
+                    "CreDtTm": now,
+                    "NbOfTxs": 1,
+                    "SttlmInf": {"SttlmMtd": "CLRG"},
+                },
+                "CdtTrfTxInf": {
+                    "PmtId": {
+                        "InstrId": uuid4().hex,
+                        "EndToEndId": e2e_id,
+                    },
+                    "IntrBkSttlmAmt": {"Amt": {"Amt": self.amount, "Ccy": self.currency}},
+                    "InstdAmt": {"Amt": {"Amt": self.amount, "Ccy": self.currency}},
+                    "XchgRate": 1.0,
+                    "ChrgBr": "DEBT",
+                    "ChrgsInf": {
+                        "Amt": {"Amt": 0, "Ccy": self.currency},
+                        "Agt": {"FinInstnId": {"ClrSysMmbId": {"MmbId": self.debtor_member}}},
+                    },
+                    "InitgPty": {
+                        "Nm": "Debtor Name",
+                        "Id": {
+                            "PrvtId": {
+                                "DtAndPlcOfBirth": {
+                                    "BirthDt": "1990-01-01",
+                                    "CityOfBirth": "Unknown",
+                                    "CtryOfBirth": "ZZ",
+                                },
+                                "Othr": [{"Id": debtor_entity_id, "SchmeNm": {"Prtry": "TAZAMA_EID"}}],
+                            }
+                        },
+                    },
+                    "Dbtr": {
+                        "Nm": "Debtor Name",
+                        "Id": {
+                            "PrvtId": {
+                                "DtAndPlcOfBirth": {
+                                    "BirthDt": "1990-01-01",
+                                    "CityOfBirth": "Unknown",
+                                    "CtryOfBirth": "ZZ",
+                                },
+                                "Othr": [{"Id": debtor_entity_id, "SchmeNm": {"Prtry": "TAZAMA_EID"}}],
+                            }
+                        },
+                        "CtctDtls": {"MobNb": "+27-000000000"},
+                    },
+                    "DbtrAcct": {
+                        "Id": {"Othr": [{"Id": uuid4().hex, "SchmeNm": {"Prtry": "MSISDN"}}]},
+                        "Nm": "Debtor Account",
+                    },
+                    "DbtrAgt": {"FinInstnId": {"ClrSysMmbId": {"MmbId": self.debtor_member}}},
+                    "CdtrAgt": {"FinInstnId": {"ClrSysMmbId": {"MmbId": self.creditor_member}}},
+                    "Cdtr": {
+                        "Nm": "Creditor Name",
+                        "Id": {
+                            "PrvtId": {
+                                "DtAndPlcOfBirth": {
+                                    "BirthDt": "1985-06-15",
+                                    "CityOfBirth": "Unknown",
+                                    "CtryOfBirth": "ZZ",
+                                },
+                                "Othr": [{"Id": creditor_entity_id, "SchmeNm": {"Prtry": "TAZAMA_EID"}}],
+                            }
+                        },
+                        "CtctDtls": {"MobNb": "+27-111111111"},
+                    },
+                    "CdtrAcct": {
+                        "Id": {"Othr": [{"Id": uuid4().hex, "SchmeNm": {"Prtry": "MSISDN"}}]},
+                        "Nm": "Creditor Account",
+                    },
+                    "Purp": {"Cd": "MP2P"},
+                },
+                "RgltryRptg": {"Dtls": {"Tp": "BALANCE PAYMENT", "Cd": "100"}},
+                "RmtInf": {"Ustrd": "Payment"},
+                "SplmtryData": {
+                    "Envlp": {
+                        "Doc": {
+                            "Xprtn": now,
+                            "InitgPty": {
+                                "Glctn": {"Lat": "-3.1609", "Long": "38.3588"},
+                            },
+                        }
+                    }
+                },
+            },
+        }
+
+    def to_pacs002(self, tenant_id: str, end_to_end_id: str | None = None) -> dict[str, Any]:
         """Convert to the full pacs.002 dict that TMS expects."""
         now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
         msg_id = uuid4().hex
+        e2e_id = end_to_end_id or uuid4().hex
         return {
             "TxTp": "pacs.002.001.12",
+            "TenantId": tenant_id,
             "FIToFIPmtSts": {
                 "GrpHdr": {
                     "MsgId": msg_id,
@@ -108,7 +207,7 @@ class SimpleTransactionRequest(BaseModel):
                 },
                 "TxInfAndSts": {
                     "OrgnlInstrId": uuid4().hex,
-                    "OrgnlEndToEndId": uuid4().hex,
+                    "OrgnlEndToEndId": e2e_id,
                     "TxSts": self.status,
                     "ChrgsInf": [
                         {
