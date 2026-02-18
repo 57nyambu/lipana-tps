@@ -462,14 +462,136 @@ const App = (() => {
         body: JSON.stringify(payload),
       });
       const el = $('txResult');
-      el.textContent = JSON.stringify(data, null, 2);
+      el.innerHTML = formatSubmitResult(data);
       el.classList.add('show');
-      showToast('Transaction submitted: ' + (data.msg_id || 'OK'), data.success ? 'success' : 'warning');
+      showToast(
+        data.success
+          ? 'Transaction accepted — MsgId: ' + (data.msg_id || 'OK')
+          : 'Transaction declined: ' + (data.message || 'Error'),
+        data.success ? 'success' : 'warning'
+      );
     } catch (e) {
+      const el = $('txResult');
+      el.innerHTML = `<div style="background:var(--danger-bg);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:16px">
+        <div style="font-weight:600;color:var(--danger);margin-bottom:4px">Submission Failed</div>
+        <div style="font-size:13px;color:var(--text-secondary)">${escHtml(e.message)}</div>
+      </div>`;
+      el.classList.add('show');
       showToast('Submit failed: ' + e.message, 'error');
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send Transaction';
+    }
+  }
+
+  function formatSubmitResult(data) {
+    const ok = data.success;
+    const statusColor = ok ? 'var(--success)' : 'var(--danger)';
+    const statusBg = ok ? 'var(--success-bg)' : 'var(--danger-bg)';
+    const statusBorder = ok ? 'rgba(16,185,129,.3)' : 'rgba(239,68,68,.3)';
+    const statusLabel = ok ? 'ACCEPTED' : 'DECLINED';
+    const statusIcon = ok
+      ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+      : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+    let html = `<div style="background:${statusBg};border:1px solid ${statusBorder};border-radius:12px;padding:20px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="color:${statusColor}">${statusIcon}</span>
+        <span style="font-weight:700;font-size:16px;color:${statusColor}">${statusLabel}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text-secondary)">${escHtml(data.message || '')}</div>
+    </div>`;
+
+    html += `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">`;
+    html += `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1;min-width:140px">
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Message ID</div>
+      <div style="font-size:13px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(data.msg_id || '—')}</div>
+    </div>`;
+    if (data.end_to_end_id) {
+      html += `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1;min-width:140px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">End-to-End ID</div>
+        <div style="font-size:13px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(data.end_to_end_id)}</div>
+      </div>`;
+    }
+    if (data.pacs008_msg_id) {
+      html += `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1;min-width:140px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">pacs.008 ID</div>
+        <div style="font-size:13px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(data.pacs008_msg_id)}</div>
+      </div>`;
+    }
+    html += `</div>`;
+
+    if (data.tms_response) {
+      html += formatTmsResponse(data.tms_response);
+    }
+
+    // Collapsible raw JSON
+    html += `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none">Raw Response JSON</summary>
+      <pre style="font-size:12px;margin-top:8px;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;padding:12px;overflow-x:auto;max-height:300px">${escHtml(JSON.stringify(data, null, 2))}</pre>
+    </details>`;
+
+    return html;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PREVIEW RAW PAYLOAD
+  // ═══════════════════════════════════════════════════════════
+
+  let _previewData = null;
+
+  async function previewTransaction() {
+    if (!connected) return showToast('Not connected', 'error');
+
+    const btn = $('txPreviewBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> Loading...';
+
+    const payload = {
+      debtor_member: $('txDebtor').value.trim() || 'dfsp001',
+      creditor_member: $('txCreditor').value.trim() || 'dfsp002',
+      amount: parseFloat($('txAmount').value) || 100,
+      currency: $('txCurrency').value,
+      status: $('txStatus').value,
+    };
+    const txTenant = $('txTenant')?.value?.trim();
+    if (txTenant) payload.tenant_id = txTenant;
+
+    try {
+      _previewData = await api('/api/v1/transactions/preview', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      const container = $('txPreviewContainer');
+      container.style.display = '';
+      switchPreviewTab('008');
+      showToast('Payload preview generated', 'info');
+    } catch (e) {
+      showToast('Preview failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview Payload';
+    }
+  }
+
+  function switchPreviewTab(tab) {
+    if (!_previewData) return;
+    const el = $('txPreviewContent');
+    const tab008 = $('previewTab008');
+    const tab002 = $('previewTab002');
+
+    // Active tab styling
+    const activeStyle = 'font-size:12px;padding:4px 12px;background:var(--accent);color:#fff;border-color:var(--accent)';
+    const inactiveStyle = 'font-size:12px;padding:4px 12px';
+
+    if (tab === '008') {
+      el.textContent = JSON.stringify(_previewData.pacs008, null, 2);
+      tab008.setAttribute('style', activeStyle);
+      tab002.setAttribute('style', inactiveStyle);
+    } else {
+      el.textContent = JSON.stringify(_previewData.pacs002, null, 2);
+      tab008.setAttribute('style', inactiveStyle);
+      tab002.setAttribute('style', activeStyle);
     }
   }
 
@@ -510,8 +632,9 @@ const App = (() => {
         elapsed,
         data,
         summaryCards: [
-          { label: 'Status', value: data.success ? 'SUCCESS' : 'FAILED', color: data.success ? 'success' : 'danger' },
+          { label: 'Status', value: data.success ? 'ACCEPTED' : 'DECLINED', color: data.success ? 'success' : 'danger' },
           { label: 'Message ID', value: data.msg_id || '—', mono: true },
+          ...(data.end_to_end_id ? [{ label: 'E2E ID', value: data.end_to_end_id, mono: true }] : []),
           { label: 'Response Time', value: elapsed + 'ms', color: elapsed < 1000 ? 'success' : elapsed < 3000 ? 'warning' : 'danger' },
           { label: 'Pipeline Message', value: data.message || '—' },
         ],
@@ -673,14 +796,17 @@ const App = (() => {
     if (!tmsResp || typeof tmsResp !== 'object') return '';
     // If error, show it prominently
     if (tmsResp.error) {
+      const stepInfo = tmsResp.step ? ` (${tmsResp.step})` : '';
+      const statusCode = tmsResp.status_code ? ` [${tmsResp.status_code}]` : '';
       return `<div style="background:var(--danger-bg);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px 16px">
-        <div style="font-weight:600;color:var(--danger);margin-bottom:4px">TMS Error</div>
+        <div style="font-weight:600;color:var(--danger);margin-bottom:4px">TMS Error${stepInfo}${statusCode}</div>
         <div style="font-size:13px;color:var(--text-secondary)">${escHtml(typeof tmsResp.error === 'string' ? tmsResp.error : JSON.stringify(tmsResp.error))}</div>
       </div>`;
     }
+    const tmsMsg = tmsResp.message || 'Transaction is valid';
     return `<div style="background:var(--success-bg);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px 16px">
-      <div style="font-weight:600;color:var(--success);margin-bottom:4px">TMS Response Received</div>
-      <div style="font-size:13px;color:var(--text-secondary)">The transaction was accepted by the Tazama pipeline for evaluation.</div>
+      <div style="font-weight:600;color:var(--success);margin-bottom:4px">Pipeline Response</div>
+      <div style="font-size:13px;color:var(--text-secondary)">${escHtml(tmsMsg)} — The transaction has been accepted into the Tazama pipeline for fraud evaluation.</div>
     </div>`;
   }
 
@@ -1480,7 +1606,7 @@ const App = (() => {
     navigateTo, toggleSidebar, closeSidebar,
     loadResults, nextPage, prevPage,
     loadAlerts, alertNextPage, alertPrevPage,
-    submitTransaction, lookupById,
+    submitTransaction, previewTransaction, switchPreviewTab, lookupById,
     viewResultDetail, closeModal,
     showConfirm, closeConfirm, execConfirm,
     loadPods, loadLogs, viewPodLogs, viewPodDetail, confirmRestartPod,

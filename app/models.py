@@ -96,14 +96,20 @@ class SimpleTransactionRequest(BaseModel):
     )
 
     def to_pacs008(self, tenant_id: str, end_to_end_id: str | None = None) -> dict[str, Any]:
-        """Build the pacs.008 (credit transfer) that must be sent BEFORE pacs.002."""
+        """Build the pacs.008 (credit transfer) that must be sent BEFORE pacs.002.
+
+        Note: TenantId must NOT be in the body — Tazama TMS schema uses
+        ``"not": {"required": ["TenantId"]}`` and the middleware sets
+        TenantId from the auth header / x-tenant-id header instead.
+        """
         now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
         e2e_id = end_to_end_id or uuid4().hex
         debtor_entity_id = uuid4().hex
         creditor_entity_id = uuid4().hex
+        debtor_acct_id = uuid4().hex
+        creditor_acct_id = uuid4().hex
         return {
             "TxTp": "pacs.008.001.10",
-            "TenantId": tenant_id,
             "FIToFICstmrCdtTrf": {
                 "GrpHdr": {
                     "MsgId": uuid4().hex,
@@ -118,7 +124,7 @@ class SimpleTransactionRequest(BaseModel):
                     },
                     "IntrBkSttlmAmt": {"Amt": {"Amt": self.amount, "Ccy": self.currency}},
                     "InstdAmt": {"Amt": {"Amt": self.amount, "Ccy": self.currency}},
-                    "XchgRate": 1.0,
+                    "XchgRate": "1",
                     "ChrgBr": "DEBT",
                     "ChrgsInf": {
                         "Amt": {"Amt": 0, "Ccy": self.currency},
@@ -136,6 +142,7 @@ class SimpleTransactionRequest(BaseModel):
                                 "Othr": [{"Id": debtor_entity_id, "SchmeNm": {"Prtry": "TAZAMA_EID"}}],
                             }
                         },
+                        "CtctDtls": {"MobNb": "+27-000000000"},
                     },
                     "Dbtr": {
                         "Nm": "Debtor Name",
@@ -152,7 +159,7 @@ class SimpleTransactionRequest(BaseModel):
                         "CtctDtls": {"MobNb": "+27-000000000"},
                     },
                     "DbtrAcct": {
-                        "Id": {"Othr": [{"Id": uuid4().hex, "SchmeNm": {"Prtry": "MSISDN"}}]},
+                        "Id": {"Othr": [{"Id": debtor_acct_id, "SchmeNm": {"Prtry": "MSISDN"}}]},
                         "Nm": "Debtor Account",
                     },
                     "DbtrAgt": {"FinInstnId": {"ClrSysMmbId": {"MmbId": self.debtor_member}}},
@@ -172,13 +179,13 @@ class SimpleTransactionRequest(BaseModel):
                         "CtctDtls": {"MobNb": "+27-111111111"},
                     },
                     "CdtrAcct": {
-                        "Id": {"Othr": [{"Id": uuid4().hex, "SchmeNm": {"Prtry": "MSISDN"}}]},
+                        "Id": {"Othr": [{"Id": creditor_acct_id, "SchmeNm": {"Prtry": "MSISDN"}}]},
                         "Nm": "Creditor Account",
                     },
                     "Purp": {"Cd": "MP2P"},
                 },
-                "RgltryRptg": {"Dtls": {"Tp": "BALANCE PAYMENT", "Cd": "100"}},
-                "RmtInf": {"Ustrd": "Payment"},
+                "RgltryRptg": {"Dtls": {"Tp": "BALANCE OF PAYMENTS", "Cd": "100"}},
+                "RmtInf": {"Ustrd": "Payment transfer"},
                 "SplmtryData": {
                     "Envlp": {
                         "Doc": {
@@ -193,13 +200,17 @@ class SimpleTransactionRequest(BaseModel):
         }
 
     def to_pacs002(self, tenant_id: str, end_to_end_id: str | None = None) -> dict[str, Any]:
-        """Convert to the full pacs.002 dict that TMS expects."""
+        """Convert to the full pacs.002 dict that TMS expects.
+
+        Note: TenantId must NOT be in the body — Tazama TMS schema uses
+        ``"not": {"required": ["TenantId"]}`` and the middleware sets
+        TenantId from the auth header / x-tenant-id header instead.
+        """
         now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
         msg_id = uuid4().hex
         e2e_id = end_to_end_id or uuid4().hex
         return {
             "TxTp": "pacs.002.001.12",
-            "TenantId": tenant_id,
             "FIToFIPmtSts": {
                 "GrpHdr": {
                     "MsgId": msg_id,
@@ -252,6 +263,8 @@ class TransactionSubmitResponse(BaseModel):
     success: bool
     message: str
     msg_id: str
+    end_to_end_id: str | None = None
+    pacs008_msg_id: str | None = None
     tms_response: dict[str, Any] | None = None
 
 

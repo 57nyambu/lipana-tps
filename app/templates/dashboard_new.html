@@ -345,11 +345,23 @@
                 <div class="form-group"><label>Tenant ID (optional)</label><input class="form-input" id="txTenant" placeholder="Leave blank for default" /></div>
                 <div class="form-actions">
                   <button type="submit" class="btn btn-primary" id="txSubmitBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send Transaction</button>
+                  <button type="button" class="btn btn-ghost" id="txPreviewBtn" onclick="App.previewTransaction()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview Payload</button>
                   <button type="reset" class="btn btn-ghost">Reset</button>
                 </div>
               </div>
             </form>
             <div class="form-result" id="txResult"></div>
+            <div id="txPreviewContainer" style="display:none;margin-top:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <h4 style="margin:0;font-size:14px;color:var(--text-primary)">Raw ISO 20022 Payloads</h4>
+                <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px" onclick="document.getElementById('txPreviewContainer').style.display='none'">Close</button>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:12px">
+                <button class="btn btn-ghost" style="font-size:12px;padding:4px 12px" id="previewTab008" onclick="App.switchPreviewTab('008')">pacs.008 (Credit Transfer)</button>
+                <button class="btn btn-ghost" style="font-size:12px;padding:4px 12px" id="previewTab002" onclick="App.switchPreviewTab('002')">pacs.002 (Payment Status)</button>
+              </div>
+              <pre class="form-result show" id="txPreviewContent" style="max-height:500px;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all"></pre>
+            </div>
           </div>
         </div>
       </section>

@@ -65,14 +65,22 @@ async def evaluate_simple(
     logger.info("Step 1: Sending pacs.008 %s for tenant %s", pacs008_msg_id, tenant)
 
     try:
-        await _forward_to_tms(pacs008, tenant, "pacs.008.001.10")
+        pacs008_resp = await _forward_to_tms(pacs008, tenant, "pacs.008.001.10")
+        logger.info("pacs.008 accepted by TMS: %s", pacs008_msg_id)
     except httpx.HTTPStatusError as exc:
-        logger.error("TMS pacs.008 returned %s: %s", exc.response.status_code, exc.response.text)
+        error_detail = exc.response.text
+        try:
+            error_json = exc.response.json()
+            error_detail = error_json.get("message", error_detail)
+        except Exception:
+            pass
+        logger.error("TMS pacs.008 returned %s: %s", exc.response.status_code, error_detail)
         return TransactionSubmitResponse(
             success=False,
-            message=f"TMS pacs.008 error: {exc.response.status_code}",
+            message=f"TMS rejected pacs.008 (step 1): {error_detail}",
             msg_id=pacs008_msg_id,
-            tms_response={"error": exc.response.text},
+            end_to_end_id=end_to_end_id,
+            tms_response={"error": error_detail, "step": "pacs.008", "status_code": exc.response.status_code},
         )
     except httpx.RequestError as exc:
         logger.error("Failed to reach TMS for pacs.008: %s", exc)
@@ -80,6 +88,7 @@ async def evaluate_simple(
             success=False,
             message=f"Cannot reach TMS at {settings.tms_base_url}: {exc}",
             msg_id=pacs008_msg_id,
+            end_to_end_id=end_to_end_id,
         )
 
     # Step 2: Send pacs.002 (payment status) — triggers evaluation
@@ -91,17 +100,27 @@ async def evaluate_simple(
         tms_resp = await _forward_to_tms(pacs002, tenant, "pacs.002.001.12")
         return TransactionSubmitResponse(
             success=True,
-            message="Transaction submitted to Tazama pipeline",
+            message="Transaction accepted — submitted to Tazama pipeline for evaluation",
             msg_id=msg_id,
+            end_to_end_id=end_to_end_id,
+            pacs008_msg_id=pacs008_msg_id,
             tms_response=tms_resp,
         )
     except httpx.HTTPStatusError as exc:
-        logger.error("TMS pacs.002 returned %s: %s", exc.response.status_code, exc.response.text)
+        error_detail = exc.response.text
+        try:
+            error_json = exc.response.json()
+            error_detail = error_json.get("message", error_detail)
+        except Exception:
+            pass
+        logger.error("TMS pacs.002 returned %s: %s", exc.response.status_code, error_detail)
         return TransactionSubmitResponse(
             success=False,
-            message=f"TMS pacs.002 error: {exc.response.status_code}",
+            message=f"TMS rejected pacs.002 (step 2): {error_detail}",
             msg_id=msg_id,
-            tms_response={"error": exc.response.text},
+            end_to_end_id=end_to_end_id,
+            pacs008_msg_id=pacs008_msg_id,
+            tms_response={"error": error_detail, "step": "pacs.002", "status_code": exc.response.status_code},
         )
     except httpx.RequestError as exc:
         logger.error("Failed to reach TMS for pacs.002: %s", exc)
@@ -109,7 +128,37 @@ async def evaluate_simple(
             success=False,
             message=f"Cannot reach TMS at {settings.tms_base_url}: {exc}",
             msg_id=msg_id,
+            end_to_end_id=end_to_end_id,
+            pacs008_msg_id=pacs008_msg_id,
         )
+
+
+@router.post(
+    "/preview",
+    summary="Preview raw ISO 20022 payloads",
+    description=(
+        "Generates the pacs.008 and pacs.002 payloads that would be sent to TMS, "
+        "without actually submitting them. Useful for inspecting the raw JSON."
+    ),
+)
+async def preview_payloads(
+    body: SimpleTransactionRequest,
+    _key: str = Depends(require_session_with_api_key),
+) -> dict:
+    from uuid import uuid4
+
+    tenant = body.resolved_tenant(settings.default_tenant_id)
+    end_to_end_id = uuid4().hex
+
+    pacs008 = body.to_pacs008(tenant, end_to_end_id)
+    pacs002 = body.to_pacs002(tenant, end_to_end_id)
+
+    return {
+        "tenant_id": tenant,
+        "end_to_end_id": end_to_end_id,
+        "pacs008": pacs008,
+        "pacs002": pacs002,
+    }
 
 
 @router.post(
