@@ -1,6 +1,14 @@
 -- ========== Configuration Seed Data ==========
 -- Rule configurations and typology definitions for the Tazama pipeline
 -- This uses the basic public deployment config (rule-901 only)
+--
+-- ADDING NEW RULES:
+--   1. Insert a new row into `rule` with the rule config JSON (id, cfg, bands, exitConditions)
+--   2. Add the rule to the `typology` config's "rules" array with weights (wghts)
+--   3. Reference the rule in `network_map` under the typology's "rules" list
+--   4. Deploy the corresponding rule processor pod (e.g. rule-902, rule-003)
+--   The dashboard pipeline view auto-discovers new rule pods dynamically.
+--
 
 -- Insert rule configurations
 INSERT INTO rule (configuration)

@@ -49,14 +49,39 @@ const App = (() => {
   const ADMIN_ACTIONS_PAGES = ['pods', 'nats', 'logs', 'deployments', 'events'];
 
   // Pipeline component definitions
-  const PIPELINE_COMPONENTS = [
-    { key: 'channel-router', label: 'Channel Router', short: 'CRSP', icon: '📡', pattern: /channel-router/i },
-    { key: 'transaction-monitoring', label: 'TMS', short: 'TMS', icon: '🔍', pattern: /transaction-monitoring/i },
-    { key: 'event-director', label: 'Event Director', short: 'ED', icon: '🎯', pattern: /event-director/i },
-    { key: 'typology-processor', label: 'Typology Processor', short: 'TP', icon: '🧬', pattern: /typology-processor/i },
-    { key: 'rule-901', label: 'Rule 901', short: 'R901', icon: '📏', pattern: /rule-901/i },
-    { key: 'rule-902', label: 'Rule 902', short: 'R902', icon: '📏', pattern: /rule-902/i },
+  // Rules are matched dynamically via wildcard — new rules (rule-903, rule-904, etc.)
+  // will be auto-discovered from running pods. Static components listed first.
+  const PIPELINE_COMPONENTS_STATIC = [
+    { key: 'channel-router', label: 'Channel Router', short: 'CRSP', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>', pattern: /channel-router/i },
+    { key: 'transaction-monitoring', label: 'TMS', short: 'TMS', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>', pattern: /transaction-monitoring/i },
+    { key: 'event-director', label: 'Event Director', short: 'ED', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', pattern: /event-director/i },
+    { key: 'typology-processor', label: 'Typology Processor', short: 'TP', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>', pattern: /typology-processor/i },
   ];
+
+  // Dynamic rule icon (shared by all rule pods)
+  const RULE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
+
+  function buildPipelineComponents(pods) {
+    const components = [...PIPELINE_COMPONENTS_STATIC];
+    // Auto-discover rule pods (rule-001 through rule-999)
+    const rulePods = (pods || []).filter(p => /rule-\d{3}/i.test(p.name));
+    const ruleIds = new Set();
+    rulePods.forEach(p => {
+      const m = p.name.match(/rule-(\d{3})/i);
+      if (m) ruleIds.add(m[1]);
+    });
+    // Sort rule IDs numerically and add as components
+    [...ruleIds].sort().forEach(id => {
+      components.push({
+        key: `rule-${id}`,
+        label: `Rule ${id}`,
+        short: `R${id}`,
+        icon: RULE_ICON,
+        pattern: new RegExp(`rule-${id}`, 'i'),
+      });
+    });
+    return components;
+  }
 
   // ── Helpers ────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
@@ -491,43 +516,38 @@ const App = (() => {
     const statusBorder = ok ? 'rgba(16,185,129,.3)' : 'rgba(239,68,68,.3)';
     const statusLabel = ok ? 'ACCEPTED' : 'DECLINED';
     const statusIcon = ok
-      ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
-      : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
-    let html = `<div style="background:${statusBg};border:1px solid ${statusBorder};border-radius:12px;padding:20px;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="color:${statusColor}">${statusIcon}</span>
-        <span style="font-weight:700;font-size:16px;color:${statusColor}">${statusLabel}</span>
+    let html = `<div style="background:${statusBg};border:1px solid ${statusBorder};border-radius:10px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="color:${statusColor};display:flex">${statusIcon}</span>
+        <span style="font-weight:700;font-size:15px;color:${statusColor}">${statusLabel}</span>
       </div>
       <div style="font-size:13px;color:var(--text-secondary)">${escHtml(data.message || '')}</div>
     </div>`;
 
-    html += `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">`;
-    html += `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1;min-width:140px">
-      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Message ID</div>
-      <div style="font-size:13px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(data.msg_id || '—')}</div>
-    </div>`;
-    if (data.end_to_end_id) {
-      html += `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1;min-width:140px">
-        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">End-to-End ID</div>
-        <div style="font-size:13px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(data.end_to_end_id)}</div>
-      </div>`;
+    // ID cards row
+    const ids = [
+      { label: 'Message ID', value: data.msg_id },
+      data.end_to_end_id ? { label: 'End-to-End ID', value: data.end_to_end_id } : null,
+      data.pacs008_msg_id ? { label: 'pacs.008 ID', value: data.pacs008_msg_id } : null,
+    ].filter(Boolean);
+    if (ids.length) {
+      html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${ids.map(id =>
+        `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;flex:1;min-width:130px">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${escHtml(id.label)}</div>
+          <div style="font-size:12px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(id.value || '—')}</div>
+        </div>`).join('')}</div>`;
     }
-    if (data.pacs008_msg_id) {
-      html += `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1;min-width:140px">
-        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">pacs.008 ID</div>
-        <div style="font-size:13px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(data.pacs008_msg_id)}</div>
-      </div>`;
-    }
-    html += `</div>`;
 
     if (data.tms_response) {
       html += formatTmsResponse(data.tms_response);
     }
 
     // Collapsible raw JSON
-    html += `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none">Raw Response JSON</summary>
-      <pre style="font-size:12px;margin-top:8px;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;padding:12px;overflow-x:auto;max-height:300px">${escHtml(JSON.stringify(data, null, 2))}</pre>
+    html += `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none;padding:4px 0">View raw JSON</summary>
+      <pre style="font-size:11px;margin-top:6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:10px;overflow-x:auto;max-height:280px">${escHtml(JSON.stringify(data, null, 2))}</pre>
     </details>`;
 
     return html;
@@ -794,53 +814,130 @@ const App = (() => {
 
   function formatTmsResponse(tmsResp) {
     if (!tmsResp || typeof tmsResp !== 'object') return '';
-    // If error, show it prominently
     if (tmsResp.error) {
-      const stepInfo = tmsResp.step ? ` (${tmsResp.step})` : '';
-      const statusCode = tmsResp.status_code ? ` [${tmsResp.status_code}]` : '';
-      return `<div style="background:var(--danger-bg);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px 16px">
-        <div style="font-weight:600;color:var(--danger);margin-bottom:4px">TMS Error${stepInfo}${statusCode}</div>
-        <div style="font-size:13px;color:var(--text-secondary)">${escHtml(typeof tmsResp.error === 'string' ? tmsResp.error : JSON.stringify(tmsResp.error))}</div>
+      const stepInfo = tmsResp.step ? ` at ${tmsResp.step}` : '';
+      const statusCode = tmsResp.status_code ? ` HTTP ${tmsResp.status_code}` : '';
+      return `<div style="background:var(--danger-bg);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <span style="font-weight:600;color:var(--danger);font-size:13px">Pipeline Error${stepInfo}${statusCode}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary)">${escHtml(typeof tmsResp.error === 'string' ? tmsResp.error : JSON.stringify(tmsResp.error))}</div>
       </div>`;
     }
-    const tmsMsg = tmsResp.message || 'Transaction is valid';
-    return `<div style="background:var(--success-bg);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px 16px">
-      <div style="font-weight:600;color:var(--success);margin-bottom:4px">Pipeline Response</div>
-      <div style="font-size:13px;color:var(--text-secondary)">${escHtml(tmsMsg)} — The transaction has been accepted into the Tazama pipeline for fraud evaluation.</div>
+    return `<div style="background:var(--success-bg);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span style="font-weight:600;color:var(--success);font-size:13px">Pipeline Accepted</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary)">${escHtml(tmsResp.message || 'Transaction submitted for fraud evaluation')}</div>
     </div>`;
   }
 
+  /**
+   * Format a full evaluation result with rule scores, typology breakdown,
+   * and thresholds. Designed to support any number of rules/typologies.
+   */
   function formatEvaluationResult(data) {
     if (!data || !data.evaluation) return '';
     const ev = data.evaluation;
     const report = ev.report || {};
     const isAlert = report.status === 'ALRT';
-    const typos = report.tadpResult?.typologyResult || [];
+    const statusText = isAlert ? 'ALERT' : report.status === 'NALT' ? 'NO ALERT' : (report.status || 'UNKNOWN');
+    const tadp = report.tadpResult || {};
+    const typos = tadp.typologyResult || [];
+    const procTime = tadp.prcgTm ? formatNs(tadp.prcgTm) : null;
 
-    let html = `<div style="background:${isAlert ? 'var(--danger-bg)' : 'var(--success-bg)'};border:1px solid ${isAlert ? 'rgba(239,68,68,.3)' : 'rgba(16,185,129,.3)'};border-radius:10px;padding:16px;margin-bottom:12px">
-      <div style="font-weight:600;color:var(--${isAlert ? 'danger' : 'success'});font-size:15px;margin-bottom:8px">
-        ${isAlert ? 'ALERT — Suspicious Activity Detected' : 'CLEAN — No Suspicious Activity'}
+    // Header banner
+    let html = `<div style="background:${isAlert ? 'var(--danger-bg)' : 'var(--success-bg)'};border:1px solid ${isAlert ? 'rgba(239,68,68,.3)' : 'rgba(16,185,129,.3)'};border-radius:8px;padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        ${isAlert
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'}
+        <span style="font-weight:700;font-size:14px;color:var(--${isAlert ? 'danger' : 'success'})">${statusText}</span>
+        ${procTime ? `<span style="margin-left:auto;font-size:11px;color:var(--text-muted)">Processed in ${procTime}</span>` : ''}
       </div>
-      <div style="font-size:13px;color:var(--text-secondary)">
-        Evaluation ID: <span style="font-family:monospace">${escHtml(report.evaluationID || '—')}</span>
+      <div style="font-size:12px;color:var(--text-secondary)">
+        ${isAlert ? 'Suspicious activity detected — transaction flagged for review' : 'No suspicious patterns detected — transaction is clean'}
       </div>
     </div>`;
 
+    // Evaluation metadata
+    const metaItems = [
+      report.evaluationID ? ['Evaluation ID', report.evaluationID] : null,
+      ev.transactionID ? ['Transaction ID', ev.transactionID] : null,
+      report.timestamp ? ['Evaluated At', new Date(report.timestamp).toLocaleString()] : null,
+    ].filter(Boolean);
+    if (metaItems.length) {
+      html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${metaItems.map(([label, val]) =>
+        `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;flex:1;min-width:120px">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">${escHtml(label)}</div>
+          <div style="font-size:11px;font-weight:600;font-family:JetBrains Mono,monospace;word-break:break-all">${escHtml(val)}</div>
+        </div>`).join('')}</div>`;
+    }
+
+    // Typology + Rule breakdown
     if (typos.length) {
-      html += `<div style="margin-top:12px"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Typology Results (${typos.length})</div>`;
-      html += typos.map((t, i) => {
-        const typoCfg = t.cfg || '';
-        const typoResult = t.result ?? '—';
+      html += `<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">
+        <span>Typology Results</span>
+        <span style="font-weight:400;color:var(--text-muted);font-size:12px;margin-left:6px">${typos.length} typolog${typos.length === 1 ? 'y' : 'ies'} evaluated</span>
+      </div>`;
+
+      typos.forEach((t, i) => {
+        const typoCfg = t.cfg || `Typology ${i + 1}`;
+        const typoScore = t.result ?? 0;
+        const typoId = t.id || '';
+        const workflow = t.workflow || {};
+        const alertThreshold = workflow.alertThreshold;
+        const interdictionThreshold = workflow.interdictionThreshold;
         const ruleResults = t.ruleResults || [];
-        return `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-weight:600;font-size:13px;color:var(--text)">${escHtml(typoCfg || 'Typology ' + (i + 1))}</span>
-            <span style="font-size:12px;font-weight:600;color:${parseFloat(typoResult) > 0 ? 'var(--danger)' : 'var(--success)'}">${escHtml(String(typoResult))}</span>
-          </div>
-          ${ruleResults.length ? `<div style="font-size:12px;color:var(--text-muted)">Rules: ${ruleResults.map(r => `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;background:var(--bg-card);border-radius:4px;font-family:monospace">${escHtml(r.cfg || r.id || '?')}: ${escHtml(String(r.result ?? ''))}</span>`).join('')}</div>` : ''}
-        </div>`;
-      }).join('');
-      html += '</div>';
+        const scoreNum = parseFloat(typoScore);
+        const isTypoAlert = alertThreshold != null ? scoreNum >= alertThreshold : scoreNum > 0;
+
+        // Typology header
+        html += `<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
+          <div style="padding:12px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--${isTypoAlert ? 'danger' : 'success'});flex-shrink:0"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(typoCfg)}</div>
+              ${typoId ? `<div style="font-size:11px;color:var(--text-muted);font-family:JetBrains Mono,monospace">${escHtml(typoId)}</div>` : ''}
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:18px;font-weight:700;color:var(--${isTypoAlert ? 'danger' : 'success'})">${escHtml(String(typoScore))}</div>
+              ${alertThreshold != null ? `<div style="font-size:10px;color:var(--text-muted)">threshold: ${alertThreshold}${interdictionThreshold != null ? ' / ' + interdictionThreshold : ''}</div>` : ''}
+            </div>
+          </div>`;
+
+        // Rule results table  
+        if (ruleResults.length) {
+          html += `<div style="padding:8px 14px">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr style="color:var(--text-muted);text-align:left;border-bottom:1px solid var(--border)">
+                <th style="padding:4px 8px 4px 0;font-weight:500">Rule</th>
+                <th style="padding:4px 8px;font-weight:500">Sub-rule</th>
+                <th style="padding:4px 8px;font-weight:500">Reason</th>
+                <th style="padding:4px 0 4px 8px;font-weight:500;text-align:right">Weight</th>
+              </tr></thead>
+              <tbody>`;
+          ruleResults.forEach(r => {
+            const ruleId = r.id || r.cfg || '—';
+            const ruleCfg = r.cfg || '';
+            const subRef = r.subRuleRef || r.ref || '—';
+            const reason = r.reason || '—';
+            const wght = r.result ?? r.wght ?? '—';
+            const wghtNum = parseFloat(wght);
+            const wghtColor = isNaN(wghtNum) ? 'var(--text)' : wghtNum > 0 ? 'var(--danger)' : 'var(--success)';
+            html += `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:6px 8px 6px 0;font-family:JetBrains Mono,monospace;color:var(--text)">${escHtml(ruleId)}${ruleCfg && ruleCfg !== ruleId ? ` <span style="color:var(--text-muted)">${escHtml(ruleCfg)}</span>` : ''}</td>
+              <td style="padding:6px 8px;font-family:JetBrains Mono,monospace;color:var(--text-muted)">${escHtml(subRef)}</td>
+              <td style="padding:6px 8px;color:var(--text-secondary)">${escHtml(reason)}</td>
+              <td style="padding:6px 0 6px 8px;text-align:right;font-weight:600;font-family:JetBrains Mono,monospace;color:${wghtColor}">${escHtml(String(wght))}</td>
+            </tr>`;
+          });
+          html += `</tbody></table></div>`;
+        }
+        html += `</div>`;
+      });
     }
 
     return html;
@@ -1037,7 +1134,11 @@ const App = (() => {
     try {
       const data = await api(`/api/v1/results/${encodeURIComponent(id)}?tenant_id=${encodeURIComponent(tenantId)}`);
       const el = $('lookupResult');
-      el.textContent = JSON.stringify(data, null, 2);
+      let html = formatEvaluationResult(data);
+      html += `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none;padding:4px 0">View raw JSON</summary>
+        <pre style="font-size:11px;margin-top:6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:10px;overflow-x:auto;max-height:400px">${escHtml(JSON.stringify(data, null, 2))}</pre>
+      </details>`;
+      el.innerHTML = html;
       el.classList.add('show');
     } catch (e) {
       showToast('Lookup failed: ' + e.message, 'error');
@@ -1050,7 +1151,11 @@ const App = (() => {
     try {
       const data = await api(`/api/v1/results/${encodeURIComponent(msgId)}?tenant_id=${encodeURIComponent(tenantId)}`);
       $('modalTitle').textContent = 'Evaluation: ' + msgId;
-      $('modalBody').textContent = JSON.stringify(data, null, 2);
+      let html = formatEvaluationResult(data);
+      html += `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none;padding:4px 0">View raw JSON</summary>
+        <pre style="font-size:11px;margin-top:6px;overflow-x:auto;max-height:400px">${escHtml(JSON.stringify(data, null, 2))}</pre>
+      </details>`;
+      $('modalBody').innerHTML = html;
       $('detailModal').classList.add('show');
     } catch (e) {
       showToast('Detail load failed: ' + e.message, 'error');
@@ -1079,7 +1184,7 @@ const App = (() => {
       const data = await api('/api/v1/system/pods');
       cachedPods = data.pods || [];
 
-      const components = PIPELINE_COMPONENTS.map(comp => {
+      const components = buildPipelineComponents(cachedPods).map(comp => {
         const pod = cachedPods.find(p => comp.pattern.test(p.name));
         let status = 'unknown', statusLabel = 'Not Found';
         if (pod) {
@@ -1141,7 +1246,7 @@ const App = (() => {
   }
 
   function viewPipelineComponent(key) {
-    const comp = PIPELINE_COMPONENTS.find(c => c.key === key);
+    const comp = buildPipelineComponents(cachedPods).find(c => c.key === key);
     if (!comp) return;
     const pod = cachedPods.find(p => comp.pattern.test(p.name));
     if (pod) {
@@ -1504,9 +1609,11 @@ const App = (() => {
       }
       const html = data.events.map(ev => {
         const icon = ev.type === 'Warning' ? 'warning' : 'normal';
-        const emoji = ev.type === 'Warning' ? '⚠' : 'ℹ';
+        const iconSvg = ev.type === 'Warning'
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
         return `<div class="event-row">
-          <div class="event-type-icon ${icon}">${emoji}</div>
+          <div class="event-type-icon ${icon}">${iconSvg}</div>
           <div class="event-content">
             <div class="event-reason">${escHtml(ev.reason || '')}</div>
             <div class="event-message">${escHtml(ev.message || '')}</div>
