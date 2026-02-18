@@ -9,6 +9,7 @@ GET  /api/v1/results/stats/summary    → aggregate counters
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -85,21 +86,39 @@ async def stats_summary(
 @router.get(
     "/{msg_id}",
     summary="Get evaluation by Message ID",
-    description="Retrieve the full evaluation result for a specific transaction MsgId.",
+    description=(
+        "Retrieve the full evaluation result for a specific transaction MsgId. "
+        "Use wait=true to poll for up to 30 seconds if the pipeline hasn't "
+        "finished processing yet."
+    ),
 )
 async def get_result(
     msg_id: str,
     tenant_id: str = Query(default=None),
+    wait: bool = Query(default=True, description="Poll for result if not yet available"),
     _key: str = Depends(require_session_with_api_key),
 ):
     tid = tenant_id or settings.default_tenant_id
-    result = get_evaluation_by_msg_id(msg_id, tid)
+    max_attempts = 15 if wait else 1  # up to ~30 s (15 × 2 s)
+    delay = 2.0
 
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"No evaluation found for MsgId={msg_id}")
+    for attempt in range(max_attempts):
+        result = get_evaluation_by_msg_id(msg_id, tid)
+        if result is not None:
+            return {
+                "tenant_id": tid,
+                "msg_id": msg_id,
+                "evaluation": result,
+            }
+        if attempt < max_attempts - 1:
+            logger.debug(
+                "Evaluation for %s not ready yet (attempt %d/%d), retrying in %.1fs…",
+                msg_id, attempt + 1, max_attempts, delay,
+            )
+            await asyncio.sleep(delay)
 
-    return {
-        "tenant_id": tid,
-        "msg_id": msg_id,
-        "evaluation": result,
-    }
+    raise HTTPException(
+        status_code=404,
+        detail=f"No evaluation found for MsgId={msg_id}. "
+               "The pipeline may still be processing — try again shortly.",
+    )

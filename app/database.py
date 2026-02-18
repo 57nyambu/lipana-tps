@@ -58,17 +58,20 @@ def _discover_eval_table(conn) -> str | None:
         return "evaluation"
 
 
-# Cache the discovered table name — use sentinel to distinguish "not yet checked" from "checked, no tables"
-_eval_table_checked = False
+# Cache the discovered table name — re-discover if previously found nothing
 _eval_table_name: str | None = None
+_eval_table_found = False  # True only when a real table was found
 
 
 def _get_eval_table(conn) -> str | None:
-    global _eval_table_name, _eval_table_checked
-    if not _eval_table_checked:
-        _eval_table_name = _discover_eval_table(conn)
-        _eval_table_checked = True
-        logger.info("Using evaluation table: %s", _eval_table_name)
+    global _eval_table_name, _eval_table_found
+    if _eval_table_found:
+        return _eval_table_name
+    # (Re-)discover — either first call, or last attempt found nothing
+    _eval_table_name = _discover_eval_table(conn)
+    if _eval_table_name is not None:
+        _eval_table_found = True
+    logger.info("Using evaluation table: %s", _eval_table_name)
     return _eval_table_name
 
 

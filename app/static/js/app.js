@@ -701,7 +701,7 @@ const App = (() => {
         const msgId = $('testExitMsgId').value.trim();
         if (!msgId) { showToast('Enter a Message ID', 'warning'); return; }
         title = `Exit Test — GET /api/v1/results/${msgId}`;
-        result = await timedApi(`/api/v1/results/${encodeURIComponent(msgId)}?tenant_id=${encodeURIComponent(exitTenant)}`);
+        result = await timedApi(`/api/v1/results/${encodeURIComponent(msgId)}?tenant_id=${encodeURIComponent(exitTenant)}&wait=true`);
 
         const evalData = result.data.evaluation || {};
         const report = evalData.report || {};
@@ -1131,16 +1131,20 @@ const App = (() => {
     const id = $('lookupId').value.trim();
     if (!id) return showToast('Enter a Message ID', 'warning');
     if (!connected) return showToast('Not connected', 'error');
+
+    const el = $('lookupResult');
+    el.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:13px"><span class="spinner" style="width:16px;height:16px;border-width:2px"></span> Looking up evaluation (pipeline may still be processing)…</div>';
+    el.classList.add('show');
+
     try {
-      const data = await api(`/api/v1/results/${encodeURIComponent(id)}?tenant_id=${encodeURIComponent(tenantId)}`);
-      const el = $('lookupResult');
+      const data = await api(`/api/v1/results/${encodeURIComponent(id)}?tenant_id=${encodeURIComponent(tenantId)}&wait=true`);
       let html = formatEvaluationResult(data);
       html += `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none;padding:4px 0">View raw JSON</summary>
         <pre style="font-size:11px;margin-top:6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:10px;overflow-x:auto;max-height:400px">${escHtml(JSON.stringify(data, null, 2))}</pre>
       </details>`;
       el.innerHTML = html;
-      el.classList.add('show');
     } catch (e) {
+      el.innerHTML = `<div style="color:var(--danger);font-size:13px">Lookup failed: ${escHtml(e.message)}</div>`;
       showToast('Lookup failed: ' + e.message, 'error');
     }
   }
