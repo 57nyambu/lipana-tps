@@ -75,13 +75,45 @@ def _get_eval_table(conn) -> str | None:
     return _eval_table_name
 
 
+def _discover_columns(conn, tbl: str) -> list[str]:
+    """Return the list of column names for a table."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = %s "
+            "ORDER BY ordinal_position;",
+            (tbl,),
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
+_columns_logged = False
+
+
 def get_evaluation_by_msg_id(msg_id: str, tenant_id: str) -> dict | None:
     """Return the full evaluation JSONB for a given MsgId + tenant."""
+    global _columns_logged
     try:
         with _get_conn(settings.eval_dsn) as conn:
             tbl = _get_eval_table(conn)
             if tbl is None:
+                logger.info("get_evaluation_by_msg_id: no evaluation table found yet")
                 return None
+
+            # Log columns once to help diagnose schema issues
+            if not _columns_logged:
+                cols = _discover_columns(conn, tbl)
+                logger.info("Evaluation table '%s' columns: %s", tbl, cols)
+                # Log a sample row to see actual stored values
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as scur:
+                    scur.execute(f'SELECT "messageid", "tenantid" FROM {tbl} LIMIT 3;')
+                    samples = scur.fetchall()
+                    for s in samples:
+                        logger.info("  Sample row: messageid=%s tenantid=%s", s["messageid"], s["tenantid"])
+                    if not samples:
+                        logger.info("  Evaluation table is empty")
+                _columns_logged = True
+
             sql = f"""
                 SELECT evaluation
                   FROM {tbl}
@@ -92,7 +124,18 @@ def get_evaluation_by_msg_id(msg_id: str, tenant_id: str) -> dict | None:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(sql, (msg_id, tenant_id))
                 row = cur.fetchone()
-                return dict(row["evaluation"]) if row else None
+                if row:
+                    logger.info("Found evaluation for MsgId=%s", msg_id)
+                    return dict(row["evaluation"])
+                else:
+                    # Check if any rows exist at all for this tenant
+                    cur.execute(f'SELECT COUNT(*) AS cnt FROM {tbl} WHERE "tenantid" = %s', (tenant_id,))
+                    cnt = cur.fetchone()["cnt"]
+                    logger.info(
+                        "No evaluation for MsgId=%s tenant=%s (table has %d rows for this tenant)",
+                        msg_id, tenant_id, cnt,
+                    )
+                    return None
     except Exception as exc:
         logger.warning("get_evaluation_by_msg_id failed: %s", exc)
         return None
@@ -120,7 +163,7 @@ def list_evaluations(
             where = " AND ".join(conditions)
             sql = f"""
                 SELECT
-                    id,
+                    "messageid"                                    AS msg_id,
                     evaluation->>'transactionID'                   AS transaction_id,
                     evaluation->'report'->>'status'                AS status,
                     evaluation->'report'->>'evaluationID'          AS evaluation_id,
@@ -129,7 +172,7 @@ def list_evaluations(
                     evaluation->'report'->'tadpResult'->'typologyResult' AS typology_results
                 FROM {tbl}
                 WHERE {where}
-                ORDER BY id DESC
+                ORDER BY "messageid" DESC
                 LIMIT %s OFFSET %s;
             """
             params.extend([limit, offset])

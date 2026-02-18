@@ -269,7 +269,7 @@ class TransactionSubmitResponse(BaseModel):
 
 
 class EvaluationDetail(BaseModel):
-    id: int | None = None
+    msg_id: str | None = None
     transaction_id: str | None = None
     status: str | None = None
     evaluation_id: str | None = None
